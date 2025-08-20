@@ -50,13 +50,15 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
+    httpOnly: true,
     secure: true, // en dev false, en prod true con https
     sameSite: "none",
   }
 }));
 
-// Passport init (sin sessions)
+// Passport init
 app.use(passport.initialize());
+app.use(passport.session());
 
 // Rutas
 app.use('/auth', authRoutes);
