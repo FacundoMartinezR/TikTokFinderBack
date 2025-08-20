@@ -9,9 +9,9 @@ passport.use(new GoogleStrategy({
 }, async (accessToken, refreshToken, profile, done) => {
   try {
     const providerId = profile.id;
-    const email = profile.emails?.[0]?.value;
-    const name = profile.displayName;
-    const avatar = profile.photos?.[0]?.value;
+    const email = profile.emails?.[0]?.value || `${providerId}@googleuser.com`; // fallback
+    const name = profile.displayName || "Usuario Google";
+    const avatar = profile.photos?.[0]?.value || null;
 
     // Busca por providerId + provider
     let user = await prisma.user.findFirst({
@@ -23,9 +23,9 @@ passport.use(new GoogleStrategy({
         data: {
           provider: 'google',
           providerId,
-          email: email ?? null,
-          name: name ?? null,
-          avatar: avatar ?? null
+          email,
+          name,
+          avatar
         }
       });
     }
