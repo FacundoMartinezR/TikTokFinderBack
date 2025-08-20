@@ -60,6 +60,13 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session());
 
+app.use((req, res, next) => {
+  res.on("finish", () => {
+    console.log("Cookies enviadas:", res.getHeader("set-cookie"));
+  });
+  next();
+});
+
 // Rutas
 app.use('/auth', authRoutes);
 app.use('/api/tiktokers', tiktokerRoutes);
