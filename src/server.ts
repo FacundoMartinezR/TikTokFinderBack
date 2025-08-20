@@ -19,12 +19,30 @@ const MONGO_URL = process.env.DATABASE_URL;
 
 const app = express();
 
+// 👇 MUY IMPORTANTE para cookies secure detrás de proxy (Render)
+app.set('trust proxy', 1);
+
 // Middlewares básicos
 app.use(express.json());
 app.use(cookieParser());
+const allowed = [FRONTEND_URL, 'http://localhost:5173', 'https://tik-tok-finder.vercel.app'];
 app.use(cors({
-  origin: FRONTEND_URL,
-  credentials: true
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // allow curl/postman
+    if (allowed.includes(origin)) return cb(null, true);
+    return cb(new Error(`Origin not allowed: ${origin}`));
+  },
+  credentials: true,
+}));
+
+// Opcional: preflight
+app.options('*', cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+    if (allowed.includes(origin)) return cb(null, true);
+    return cb(new Error(`Origin not allowed: ${origin}`));
+  },
+  credentials: true,
 }));
 
 app.use(session({
@@ -32,8 +50,8 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    sameSite: "none",
     secure: true, // en dev false, en prod true con https
+    sameSite: "none",
   }
 }));
 
