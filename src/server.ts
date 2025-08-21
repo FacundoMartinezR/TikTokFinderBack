@@ -52,9 +52,22 @@ app.use(session({
   cookie: {
     httpOnly: true,
     secure: true, // en dev false, en prod true con https
+    domain: process.env.BACKEND_COOKIE_DOMAIN || 'tiktokfinder.onrender.com',
     sameSite: "none",
+    path: '/',
   }
 }));
+
+// log para ver exactamente qué headers envía el servidor
+app.use((req, res, next) => {
+  // log incoming cookies
+  console.log('[REQUEST] origin=', req.headers.origin, ' cookies=', req.headers.cookie);
+  // log response set-cookie cuando termine la respuesta
+  res.on('finish', () => {
+    console.log('[RESPONSE] set-cookie header=', res.getHeader('set-cookie'));
+  });
+  next();
+});
 
 // Passport init
 app.use(passport.initialize());

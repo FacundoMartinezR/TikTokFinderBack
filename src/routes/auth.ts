@@ -22,19 +22,21 @@ router.get(
 
     const cookieOpts = {
       httpOnly: true,
-      secure: true,        // Render usa HTTPS
-      sameSite: 'none' as const, // cross-site fetch
+      secure: true,
+      sameSite: 'none' as const,
       path: '/',
+      domain: process.env.BACKEND_COOKIE_DOMAIN || 'tiktokfinder.onrender.com',
       maxAge: 7 * 24 * 3600 * 1000,
     };
 
+    // Set-Cookie explícito
     res.cookie('token', token, cookieOpts);
 
     console.log('[auth/google/callback] Set-Cookie token (len):', token.length);
     console.log('[auth/google/callback] Cookie opts:', cookieOpts);
     console.log('[auth/google/callback] Redirect ->', process.env.FRONTEND_URL + '/dashboard');
 
-    res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
+    return res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
   }
 );
 
