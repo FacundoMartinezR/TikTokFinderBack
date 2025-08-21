@@ -12,6 +12,7 @@ import tiktokerRoutes from './routes/tiktokers';
 import session from 'express-session';
 import { prisma } from './lib/prisma';
 import stripe from 'stripe';
+import cookie from 'cookie';
 
 const PORT = process.env.PORT ?? 4000;
 const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:3000';
@@ -85,6 +86,20 @@ app.use('/auth', authRoutes);
 app.use('/api/tiktokers', tiktokerRoutes);
 
 app.get('/', (req, res) => res.json({ ok: true }));
+
+app.get('/test-set-cookie', (req, res) => {
+  const token = 'TEST-TOKEN-' + Date.now();
+  const serialized = cookie.serialize('token', token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    path: '/',
+    maxAge: 60 * 60,
+    domain: process.env.BACKEND_COOKIE_DOMAIN || 'tiktokfinder.onrender.com'
+  });
+  res.setHeader('Set-Cookie', serialized);
+  res.json({ ok: true, serialized });
+});
 
 app.post("/user/upgrade", async (req, res) => {
   const { userId } = req.body;
