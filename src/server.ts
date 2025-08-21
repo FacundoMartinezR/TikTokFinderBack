@@ -46,6 +46,7 @@ app.options('*', cors({
   credentials: true,
 }));
 
+/*
 app.use(session({
   secret: "supersecret",
   resave: false,
@@ -58,6 +59,7 @@ app.use(session({
     path: '/',
   }
 }));
+*/
 
 // log para ver exactamente qué headers envía el servidor
 app.use((req, res, next) => {
