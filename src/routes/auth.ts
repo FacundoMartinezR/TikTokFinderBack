@@ -2,6 +2,7 @@ import express from 'express';
 import passport from '../lib/passport';
 import { signToken, verifyToken } from '../lib/jwt';
 import { prisma } from '../lib/prisma';
+import cookie from "cookie";
 
 const router = express.Router();
 
@@ -23,18 +24,19 @@ router.get(
     const cookieOpts = {
       httpOnly: true,
       secure: true,
-      sameSite: 'none' as const,
-      path: '/',
-      domain: process.env.BACKEND_COOKIE_DOMAIN || 'tiktokfinder.onrender.com',
-      maxAge: 7 * 24 * 3600 * 1000,
+      sameSite: 'none' as const, // debe ser 'none' como literal type para SerializeOptions
+      path: "/",
+      maxAge: 7 * 24 * 3600, // en segundos
+      domain: process.env.BACKEND_COOKIE_DOMAIN || 'tiktokfinder.onrender.com'
     };
 
-    // Set-Cookie explícito
-    res.cookie('token', token, cookieOpts);
+    // serializar manualmente
+    const serialized = cookie.serialize('token', token, cookieOpts);
 
-    console.log('[auth/google/callback] Set-Cookie token (len):', token.length);
-    console.log('[auth/google/callback] Cookie opts:', cookieOpts);
-    console.log('[auth/google/callback] Redirect ->', process.env.FRONTEND_URL + '/dashboard');
+    res.setHeader('Set-Cookie', serialized);
+
+    // logs para debugging
+console.log('[auth/google/callback] Serialized Set-Cookie:', serialized);
 
     return res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
   }
