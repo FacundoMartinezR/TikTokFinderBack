@@ -1,4 +1,3 @@
-// src/routes/paypal-webhook.ts
 import express from "express";
 import { prisma } from "../lib/prisma";
 
@@ -9,37 +8,35 @@ router.post("/", express.json(), async (req, res) => {
   const event = req.body;
 
   try {
-    const email = event.resource?.subscriber?.email_address;
-    if (!email) {
-      console.warn("[PayPal Webhook] No email found in event:", event);
-      return res.status(400).send("No email in event");
+    const subscriptionId = event.resource?.id;
+    if (!subscriptionId) {
+      console.warn("[PayPal Webhook] No subscriptionId found in event:", event);
+      return res.status(400).send("No subscriptionId in event");
+    }
+
+    // Buscar usuario por subscriptionId
+    const user = await prisma.user.findFirst({ where: { paypalSubscriptionId: subscriptionId } });
+    if (!user) {
+      console.warn("[PayPal Webhook] No user found for subscriptionId:", subscriptionId);
+      return res.status(404).send("No user for subscriptionId");
     }
 
     switch (event.event_type) {
       case "BILLING.SUBSCRIPTION.ACTIVATED":
-        console.log(`[PayPal Webhook] Subscription activated for ${email}`);
-        await prisma.user.update({
-          where: { email },
-          data: { role: "PAID", paypalSubscriptionId: event.resource.id },
-        });
+        console.log(`[PayPal Webhook] Subscription activated for user ${user.id}`);
+        await prisma.user.update({ where: { id: user.id }, data: { role: "PAID" } });
         break;
 
       case "BILLING.SUBSCRIPTION.CANCELLED":
       case "BILLING.SUBSCRIPTION.EXPIRED":
-        console.log(`[PayPal Webhook] Subscription cancelled/expired for ${email}`);
-        await prisma.user.update({
-          where: { email },
-          data: { role: "FREE", paypalSubscriptionId: null },
-        });
+        console.log(`[PayPal Webhook] Subscription cancelled/expired for user ${user.id}`);
+        await prisma.user.update({ where: { id: user.id }, data: { role: "FREE", paypalSubscriptionId: null } });
         break;
 
       case "PAYMENT.SALE.DENIED":
       case "PAYMENT.SALE.REFUSED":
-        console.log(`[PayPal Webhook] Payment failed for ${email}, setting role to FREE`);
-        await prisma.user.update({
-          where: { email },
-          data: { role: "FREE" },
-        });
+        console.log(`[PayPal Webhook] Payment failed for user ${user.id}, setting role to FREE`);
+        await prisma.user.update({ where: { id: user.id }, data: { role: "FREE" } });
         break;
 
       default:

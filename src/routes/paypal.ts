@@ -249,6 +249,7 @@ router.post("/cancel-subscription", async (req, res) => {
   try {
     let { subscriptionId, userId } = req.body ?? {};
 
+    // Si no viene subscriptionId, intentar obtenerlo desde userId
     if (!subscriptionId) {
       userId = userId ?? extractUserIdFromReq(req);
       if (!userId) return res.status(400).json({ error: "missing_userId_or_subscriptionId" });
@@ -260,10 +261,12 @@ router.post("/cancel-subscription", async (req, res) => {
       subscriptionId = user.paypalSubscriptionId;
     }
 
+    // Validar que tenemos subscriptionId
     if (!subscriptionId) return res.status(400).json({ error: "subscriptionId_missing" });
 
     const accessToken = await getAccessToken();
 
+    // Cancelar suscripción en PayPal
     const cancelReq = await fetch(`${PAYPAL_API}/v1/billing/subscriptions/${subscriptionId}/cancel`, {
       method: "POST",
       headers: {
@@ -279,12 +282,16 @@ router.post("/cancel-subscription", async (req, res) => {
       return res.status(500).json({ error: "paypal_cancel_failed", details: text });
     }
 
-    console.log(`Subscription ${subscriptionId} cancellation requested by user ${userId}`);
+    console.log(`Subscription ${subscriptionId} cancellation requested by user ${userId || "unknown"}`);
+
+    // Actualización de rol no se hace aquí; lo hace el webhook usando subscriptionId
+
     return res.json({ ok: true, message: "Cancel request sent. Rol actualizado vía webhook." });
   } catch (err) {
     console.error("Error canceling subscription:", err);
     return res.status(500).json({ error: "server_error", details: `${err}` });
   }
 });
+
 
 export default router;
