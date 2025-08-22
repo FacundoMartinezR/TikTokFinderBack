@@ -5,23 +5,35 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 // src/routes/tiktokers.ts
 const express_1 = __importDefault(require("express"));
-const Tiktoker_1 = __importDefault(require("../models/Tiktoker")); // tu modelo Mongoose
+const Tiktoker_1 = __importDefault(require("../models/Tiktoker")); // ajusta la ruta si la tienes diferente
 const router = express_1.default.Router();
+/**
+ * GET /api/tiktokers
+ * Query params:
+ *  - niche
+ *  - country
+ *  - gender
+ *  - minFollowers
+ *  - maxFollowers
+ *  - sortBy = followers|engagement (default followers)
+ *  - page, perPage
+ */
 router.get("/", async (req, res) => {
     try {
-        // Query params
-        const { niche, country, gender, minFollowers, maxFollowers, sortBy = "followers", page = "1", perPage = "25", } = req.query;
-        const pageNum = Math.max(1, Number(page) || 1);
-        const perPageNum = Math.max(1, Math.min(200, Number(perPage) || 25));
-        const skip = (pageNum - 1) * perPageNum;
-        // Build Mongo query
+        const { niche, country, gender, minFollowers, maxFollowers, sortBy = "followers", page = "1", perPage = "25" } = req.query;
         const q = {};
-        if (niche)
-            q.niches = { $in: Array.isArray(niche) ? niche : [String(niche)] };
+        // niche puede ser texto libre que buscamos en 'niche' o en 'tags'
+        if (niche) {
+            const n = String(niche);
+            q.$or = [
+                { niche: { $regex: n, $options: "i" } },
+                { tags: { $in: [new RegExp(`^${escapeRegExp(n)}$`, "i")] } }
+            ];
+        }
         if (country)
-            q.country = String(country);
+            q.country = { $regex: String(country), $options: "i" };
         if (gender)
-            q.gender = String(gender);
+            q.gender = { $regex: String(gender), $options: "i" };
         if (minFollowers || maxFollowers) {
             q.followers = {};
             if (minFollowers)
@@ -29,33 +41,41 @@ router.get("/", async (req, res) => {
             if (maxFollowers)
                 q.followers.$lte = Number(maxFollowers);
         }
-        // Sort
-        let sort = { followers: -1 }; // default
-        if (String(sortBy).toLowerCase().includes("engagement"))
-            sort = { engagementRate: -1 };
-        else if (String(sortBy).toLowerCase().includes("followers"))
-            sort = { followers: -1 };
-        // Query total + results
-        const [total, results] = await Promise.all([
+        const pageNum = Math.max(1, Number(page) || 1);
+        const perPageNum = Math.min(200, Math.max(1, Number(perPage) || 25));
+        const skip = (pageNum - 1) * perPageNum;
+        // sort
+        let sortObj = { followers: -1 };
+        if (String(sortBy).toLowerCase().includes("engag")) {
+            sortObj = { engagementRate: -1 };
+        }
+        else if (String(sortBy).toLowerCase().includes("followers")) {
+            sortObj = { followers: -1 };
+        }
+        const [total, docs] = await Promise.all([
             Tiktoker_1.default.countDocuments(q),
-            Tiktoker_1.default.find(q)
-                .sort(sort)
-                .skip(skip)
-                .limit(perPageNum)
-                .lean()
-                .exec(),
+            Tiktoker_1.default.find(q).sort(sortObj).skip(skip).limit(perPageNum).lean()
         ]);
-        return res.json({
-            ok: true,
-            total,
-            page: pageNum,
-            perPage: perPageNum,
-            results,
-        });
+        // mapear al formato que espera el frontend
+        const results = (docs || []).map((d) => ({
+            id: d._id?.toString?.() ?? d._id,
+            handle: d.username ?? "",
+            name: d.displayName ?? "",
+            avatarUrl: d.avatarUrl ?? "",
+            country: d.country ?? "",
+            niches: (d.tags && d.tags.length) ? d.tags : (d.niche ? [d.niche] : []),
+            followers: Number(d.followers || 0),
+            engagementRate: Number(d.engagementRate || 0)
+        }));
+        res.json({ ok: true, total, page: pageNum, perPage: perPageNum, results });
     }
     catch (err) {
         console.error("[/api/tiktokers] error:", err);
-        return res.status(500).json({ ok: false, error: "server_error", details: `${err}` });
+        res.status(500).json({ ok: false, error: "server_error", details: String(err) });
     }
 });
+// small helper
+function escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 exports.default = router;
