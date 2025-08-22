@@ -12,22 +12,32 @@ const router = express_1.default.Router();
 // Google OAuth
 router.get('/google', passport_1.default.authenticate('google', { scope: ['profile', 'email'] }));
 router.get('/google/callback', passport_1.default.authenticate('google', { session: false }), async (req, res) => {
-    // @ts-ignore
-    const user = req.user;
-    if (!user) {
-        return res.status(401).json({ ok: false, error: 'User not found' });
+    try {
+        // @ts-ignore
+        const user = req.user;
+        if (!user) {
+            console.log('[auth/google/callback] No user found');
+            return res.status(401).json({ ok: false, error: 'User not found' });
+        }
+        console.log('[auth/google/callback] User found', user);
+        const token = (0, jwt_1.signToken)({ id: user.id, email: user.email, role: user.role });
+        console.log('[auth/google/callback] JWT created', token);
+        const isProd = process.env.NODE_ENV === 'production';
+        const serialized = cookie_1.default.serialize('token', token, {
+            httpOnly: true,
+            secure: isProd,
+            sameSite: 'none',
+            path: '/',
+            maxAge: 7 * 24 * 3600,
+        });
+        console.log('[auth/google/callback] Serialized Set-Cookie:', serialized);
+        res.setHeader('Set-Cookie', serialized);
+        return res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
     }
-    const token = (0, jwt_1.signToken)({ id: user.id, email: user.email, role: user.role });
-    const serialized = cookie_1.default.serialize('token', token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none', // notar la N mayúscula; cookie.serialize produce "SameSite=None"
-        path: '/',
-        maxAge: 7 * 24 * 3600,
-    });
-    res.setHeader('Set-Cookie', serialized);
-    console.log('[auth/google/callback] Serialized Set-Cookie:', serialized);
-    return res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
+    catch (err) {
+        console.error('[auth/google/callback] ERROR', err);
+        return res.status(500).json({ ok: false, error: 'Internal Server Error' });
+    }
 });
 // Endpoint para obtener usuario logueado
 router.get('/me', async (req, res) => {
