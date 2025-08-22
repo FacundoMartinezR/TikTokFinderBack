@@ -169,9 +169,8 @@ if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
                 console.log(`${methods.padEnd(10)} ${route.path}`);
             });
         }
-        listEndpoints(app);
         app.listen(PORT, () => {
-            console.log(`Server running on http://localhost:${PORT}`);
+            console.log(`Servidor escuchando en http://localhost:${PORT}`);
         });
     }
     catch (err) {
