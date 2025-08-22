@@ -11,7 +11,6 @@ import authRoutes from './routes/auth';
 import tiktokerRoutes from './routes/tiktokers';
 import session from 'express-session';
 import { prisma } from './lib/prisma';
-import stripe from 'stripe';
 import cookie from 'cookie';
 
 const PORT = process.env.PORT ?? 4000;
@@ -19,6 +18,9 @@ const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:3000';
 const MONGO_URL = process.env.DATABASE_URL;
 
 const app = express();
+
+console.log('>>> APP STARTING - NODE_ENV=', process.env.NODE_ENV, 'PORT=', process.env.PORT);
+console.error('>>> APP STARTING (error stream)'); // mandalo a stderr también
 
 // 👇 MUY IMPORTANTE para cookies secure detrás de proxy (Render)
 app.set('trust proxy', 1);
@@ -100,6 +102,12 @@ app.get('/test-set-cookie', (req, res) => {
   res.setHeader('Set-Cookie', serialized);
   res.json({ ok: true, serialized });
 });
+
+app.get('/health', (req, res) => {
+  console.log('[HEALTH] ping received');
+  res.json({ ok: true, time: Date.now() });
+});
+
 
 app.post("/user/upgrade", async (req, res) => {
   const { userId } = req.body;
