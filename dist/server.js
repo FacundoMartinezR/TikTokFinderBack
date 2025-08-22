@@ -20,8 +20,6 @@ const PORT = process.env.PORT ?? 4000;
 const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:3000';
 const MONGO_URL = process.env.DATABASE_URL;
 const app = (0, express_1.default)();
-app.get('/', (req, res) => res.send('ok'));
-app.listen(4000, () => console.log('ok'));
 // 👇 MUY IMPORTANTE para cookies secure detrás de proxy (Render)
 app.set('trust proxy', 1);
 // Middlewares básicos
@@ -31,13 +29,15 @@ const allowed = [FRONTEND_URL, 'http://localhost:5173', 'https://tik-tok-finder.
 app.use((0, cors_1.default)({
     origin: (origin, cb) => {
         if (!origin)
-            return cb(null, true); // allow curl/postman
+            return cb(null, true); // Postman, curl, webhooks
         if (allowed.includes(origin))
             return cb(null, true);
-        return cb(new Error(`Origin not allowed: ${origin}`));
+        return cb(null, false); // rechaza otros
     },
     credentials: true,
 }));
+// CORS específico para webhook (permite cualquier origen)
+app.use("/paypal-webhook", (0, cors_1.default)());
 /* Opcional: preflight
 app.options('*', cors({
   origin: (origin, cb) => {

@@ -11,7 +11,6 @@ import authRoutes from './routes/auth';
 import tiktokerRoutes from './routes/tiktokers';
 import session from 'express-session';
 import { prisma } from './lib/prisma';
-import cookie from 'cookie';
 import paypalWebhookRouter from "./routes/paypal-webhook";
 
 const PORT = process.env.PORT ?? 4000;
@@ -19,8 +18,6 @@ const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:3000';
 const MONGO_URL = process.env.DATABASE_URL;
 
 const app = express();
-app.get('/', (req, res) => res.send('ok'));
-app.listen(4000, () => console.log('ok'));
 
 // 👇 MUY IMPORTANTE para cookies secure detrás de proxy (Render)
 app.set('trust proxy', 1);
@@ -31,13 +28,15 @@ app.use(cookieParser());
 const allowed = [FRONTEND_URL, 'http://localhost:5173', 'https://tik-tok-finder.vercel.app'];
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true); // allow curl/postman
+    if (!origin) return cb(null, true); // Postman, curl, webhooks
     if (allowed.includes(origin)) return cb(null, true);
-    return cb(new Error(`Origin not allowed: ${origin}`));
+    return cb(null, false); // rechaza otros
   },
   credentials: true,
 }));
 
+// CORS específico para webhook (permite cualquier origen)
+app.use("/paypal-webhook", cors());
 
 /* Opcional: preflight
 app.options('*', cors({
