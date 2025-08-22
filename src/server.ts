@@ -46,20 +46,18 @@ app.options('*', cors({
   credentials: true,
 }));
 
-/*
+
 app.use(session({
-  secret: "supersecret",
+  secret: process.env.SESSION_SECRET || "supersecret",
   resave: false,
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
-    secure: true, // en dev false, en prod true con https
-    domain: process.env.BACKEND_COOKIE_DOMAIN || 'tiktokfinder.onrender.com',
-    sameSite: "none",
+    secure: true,
+    sameSite: 'none',
     path: '/',
   }
 }));
-*/
 
 // log para ver exactamente qué headers envía el servidor
 app.use((req, res, next) => {

@@ -27,7 +27,6 @@ router.get(
   sameSite: 'none',     // notar la N mayúscula; cookie.serialize produce "SameSite=None"
   path: '/',
   maxAge: 7 * 24 * 3600,
-  // domain: process.env.BACKEND_COOKIE_DOMAIN || 'tiktokfinder.onrender.com' // opcional, quitar para debug
 });
 
 res.setHeader('Set-Cookie', serialized);
