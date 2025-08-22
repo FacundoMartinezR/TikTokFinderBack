@@ -15,6 +15,7 @@ const auth_1 = __importDefault(require("./routes/auth"));
 const tiktokers_1 = __importDefault(require("./routes/tiktokers"));
 const express_session_1 = __importDefault(require("express-session"));
 const prisma_1 = require("./lib/prisma");
+const paypal_webhook_1 = __importDefault(require("./routes/paypal-webhook"));
 const PORT = process.env.PORT ?? 4000;
 const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:3000';
 const MONGO_URL = process.env.DATABASE_URL;
@@ -81,6 +82,7 @@ app.use((req, res, next) => {
 // Rutas
 app.use('/auth', auth_1.default);
 app.use('/api/tiktokers', tiktokers_1.default);
+app.use("/paypal-webhook", paypal_webhook_1.default);
 app.get('/', (req, res) => res.json({ ok: true }));
 /*
 app.get('/test-set-cookie', (req, res) => {

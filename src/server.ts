@@ -12,6 +12,7 @@ import tiktokerRoutes from './routes/tiktokers';
 import session from 'express-session';
 import { prisma } from './lib/prisma';
 import cookie from 'cookie';
+import paypalWebhookRouter from "./routes/paypal-webhook";
 
 const PORT = process.env.PORT ?? 4000;
 const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:3000';
@@ -88,6 +89,7 @@ app.use((req, res, next) => {
 // Rutas
 app.use('/auth', authRoutes);
 app.use('/api/tiktokers', tiktokerRoutes);
+app.use("/paypal-webhook", paypalWebhookRouter);
 
 app.get('/', (req, res) => res.json({ ok: true }));
 
