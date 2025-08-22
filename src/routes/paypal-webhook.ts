@@ -5,6 +5,7 @@ import { prisma } from "../lib/prisma";
 const router = express.Router();
 
 router.post("/paypal-webhook", express.json(), async (req, res) => {
+  console.log("[PAYPAL WEBHOOK] evento recibido:", JSON.stringify(req.body, null, 2));
   const event = req.body;
 
   try {
