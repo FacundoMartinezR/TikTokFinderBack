@@ -15,32 +15,91 @@ const auth_1 = __importDefault(require("./routes/auth"));
 const tiktokers_1 = __importDefault(require("./routes/tiktokers"));
 const express_session_1 = __importDefault(require("express-session"));
 const prisma_1 = require("./lib/prisma");
+const cookie_1 = __importDefault(require("cookie"));
 const PORT = process.env.PORT ?? 4000;
 const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:3000';
 const MONGO_URL = process.env.DATABASE_URL;
 const app = (0, express_1.default)();
+console.log('>>> APP STARTING - NODE_ENV=', process.env.NODE_ENV, 'PORT=', process.env.PORT);
+console.error('>>> APP STARTING (error stream)'); // mandalo a stderr también
+// 👇 MUY IMPORTANTE para cookies secure detrás de proxy (Render)
+app.set('trust proxy', 1);
 // Middlewares básicos
 app.use(express_1.default.json());
 app.use((0, cookie_parser_1.default)());
+const allowed = [FRONTEND_URL, 'http://localhost:5173', 'https://tik-tok-finder.vercel.app'];
 app.use((0, cors_1.default)({
-    origin: FRONTEND_URL,
-    credentials: true
+    origin: (origin, cb) => {
+        if (!origin)
+            return cb(null, true); // allow curl/postman
+        if (allowed.includes(origin))
+            return cb(null, true);
+        return cb(new Error(`Origin not allowed: ${origin}`));
+    },
+    credentials: true,
+}));
+// Opcional: preflight
+app.options('*', (0, cors_1.default)({
+    origin: (origin, cb) => {
+        if (!origin)
+            return cb(null, true);
+        if (allowed.includes(origin))
+            return cb(null, true);
+        return cb(new Error(`Origin not allowed: ${origin}`));
+    },
+    credentials: true,
 }));
 app.use((0, express_session_1.default)({
-    secret: "supersecret",
+    secret: process.env.SESSION_SECRET || "supersecret",
     resave: false,
     saveUninitialized: false,
     cookie: {
         httpOnly: true,
-        secure: false, // en dev false, en prod true con https
+        secure: true,
+        sameSite: 'none',
+        path: '/',
     }
 }));
-// Passport init (sin sessions)
+// log para ver exactamente qué headers envía el servidor
+app.use((req, res, next) => {
+    // log incoming cookies
+    console.log('[REQUEST] origin=', req.headers.origin, ' cookies=', req.headers.cookie);
+    // log response set-cookie cuando termine la respuesta
+    res.on('finish', () => {
+        console.log('[RESPONSE] set-cookie header=', res.getHeader('set-cookie'));
+    });
+    next();
+});
+// Passport init
 app.use(passport_1.default.initialize());
+app.use(passport_1.default.session());
+app.use((req, res, next) => {
+    res.on("finish", () => {
+        console.log("Cookies enviadas:", res.getHeader("set-cookie"));
+    });
+    next();
+});
 // Rutas
 app.use('/auth', auth_1.default);
 app.use('/api/tiktokers', tiktokers_1.default);
 app.get('/', (req, res) => res.json({ ok: true }));
+app.get('/test-set-cookie', (req, res) => {
+    const token = 'TEST-TOKEN-' + Date.now();
+    const serialized = cookie_1.default.serialize('token', token, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        path: '/',
+        maxAge: 60 * 60,
+        domain: process.env.BACKEND_COOKIE_DOMAIN || 'tiktokfinder.onrender.com'
+    });
+    res.setHeader('Set-Cookie', serialized);
+    res.json({ ok: true, serialized });
+});
+app.get('/health', (req, res) => {
+    console.log('[HEALTH] ping received');
+    res.json({ ok: true, time: Date.now() });
+});
 app.post("/user/upgrade", async (req, res) => {
     const { userId } = req.body;
     try {

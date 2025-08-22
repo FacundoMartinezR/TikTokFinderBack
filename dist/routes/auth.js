@@ -7,6 +7,7 @@ const express_1 = __importDefault(require("express"));
 const passport_1 = __importDefault(require("../lib/passport"));
 const jwt_1 = require("../lib/jwt");
 const prisma_1 = require("../lib/prisma");
+const cookie_1 = __importDefault(require("cookie"));
 const router = express_1.default.Router();
 // Google OAuth
 router.get('/google', passport_1.default.authenticate('google', { scope: ['profile', 'email'] }));
@@ -17,16 +18,21 @@ router.get('/google/callback', passport_1.default.authenticate('google', { sessi
         return res.status(401).json({ ok: false, error: 'User not found' });
     }
     const token = (0, jwt_1.signToken)({ id: user.id, email: user.email, role: user.role });
-    res.cookie('token', token, {
+    const serialized = cookie_1.default.serialize('token', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 7 * 24 * 3600 * 1000, // 7 días
+        secure: true,
+        sameSite: 'none', // notar la N mayúscula; cookie.serialize produce "SameSite=None"
+        path: '/',
+        maxAge: 7 * 24 * 3600,
     });
-    res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
+    res.setHeader('Set-Cookie', serialized);
+    console.log('[auth/google/callback] Serialized Set-Cookie:', serialized);
+    return res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
 });
 // Endpoint para obtener usuario logueado
 router.get('/me', async (req, res) => {
+    console.log('[/auth/me] Origin:', req.headers.origin);
+    console.log('[/auth/me] Cookies:', req.cookies);
     const token = req.cookies?.token;
     if (!token)
         return res.status(401).json({ ok: false, error: 'Not authenticated' });

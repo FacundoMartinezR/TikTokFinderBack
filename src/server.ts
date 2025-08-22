@@ -97,7 +97,6 @@ app.get('/test-set-cookie', (req, res) => {
     sameSite: 'none',
     path: '/',
     maxAge: 60 * 60,
-    domain: process.env.BACKEND_COOKIE_DOMAIN || 'tiktokfinder.onrender.com'
   });
   res.setHeader('Set-Cookie', serialized);
   res.json({ ok: true, serialized });
