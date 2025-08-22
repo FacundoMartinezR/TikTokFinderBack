@@ -241,4 +241,50 @@ router.post("/check-subscription", async (req, res) => {
   }
 });
 
+/**
+ * POST /paypal/cancel-subscription
+ * Body: { subscriptionId?: string, userId?: string }
+ */
+router.post("/cancel-subscription", async (req, res) => {
+  try {
+    let { subscriptionId, userId } = req.body ?? {};
+
+    if (!subscriptionId) {
+      userId = userId ?? extractUserIdFromReq(req);
+      if (!userId) return res.status(400).json({ error: "missing_userId_or_subscriptionId" });
+
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user || !user.paypalSubscriptionId) {
+        return res.status(404).json({ error: "no_subscription_record" });
+      }
+      subscriptionId = user.paypalSubscriptionId;
+    }
+
+    if (!subscriptionId) return res.status(400).json({ error: "subscriptionId_missing" });
+
+    const accessToken = await getAccessToken();
+
+    const cancelReq = await fetch(`${PAYPAL_API}/v1/billing/subscriptions/${subscriptionId}/cancel`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ reason: "User requested cancellation" }),
+    });
+
+    if (!cancelReq.ok) {
+      const text = await cancelReq.text();
+      console.error("PayPal cancel failed:", text);
+      return res.status(500).json({ error: "paypal_cancel_failed", details: text });
+    }
+
+    console.log(`Subscription ${subscriptionId} cancellation requested by user ${userId}`);
+    return res.json({ ok: true, message: "Cancel request sent. Rol actualizado vía webhook." });
+  } catch (err) {
+    console.error("Error canceling subscription:", err);
+    return res.status(500).json({ error: "server_error", details: `${err}` });
+  }
+});
+
 export default router;

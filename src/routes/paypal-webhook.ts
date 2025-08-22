@@ -7,23 +7,49 @@ const router = express.Router();
 router.post("/paypal-webhook", express.json(), async (req, res) => {
   const event = req.body;
 
-  if (event.event_type === "BILLING.SUBSCRIPTION.ACTIVATED") {
-    const email = event.resource.subscriber.email_address;
-    await prisma.user.update({
-      where: { email },
-      data: { role: "PAID", paypalSubscriptionId: event.resource.id },
-    });
-  }
+  try {
+    const email = event.resource?.subscriber?.email_address;
+    if (!email) {
+      console.warn("[PayPal Webhook] No email found in event:", event);
+      return res.status(400).send("No email in event");
+    }
 
-  if (event.event_type === "BILLING.SUBSCRIPTION.CANCELLED") {
-    const email = event.resource.subscriber.email_address;
-    await prisma.user.update({
-      where: { email },
-      data: { role: "FREE", paypalSubscriptionId: null },
-    });
-  }
+    switch (event.event_type) {
+      case "BILLING.SUBSCRIPTION.ACTIVATED":
+        console.log(`[PayPal Webhook] Subscription activated for ${email}`);
+        await prisma.user.update({
+          where: { email },
+          data: { role: "PAID", paypalSubscriptionId: event.resource.id },
+        });
+        break;
 
-  res.status(200).send("OK");
+      case "BILLING.SUBSCRIPTION.CANCELLED":
+      case "BILLING.SUBSCRIPTION.EXPIRED":
+        console.log(`[PayPal Webhook] Subscription cancelled/expired for ${email}`);
+        await prisma.user.update({
+          where: { email },
+          data: { role: "FREE", paypalSubscriptionId: null },
+        });
+        break;
+
+      case "PAYMENT.SALE.DENIED":
+      case "PAYMENT.SALE.REFUSED":
+        console.log(`[PayPal Webhook] Payment failed for ${email}, setting role to FREE`);
+        await prisma.user.update({
+          where: { email },
+          data: { role: "FREE" },
+        });
+        break;
+
+      default:
+        console.log("[PayPal Webhook] Event ignored:", event.event_type);
+    }
+
+    res.status(200).send("OK");
+  } catch (err) {
+    console.error("[PayPal Webhook] Error processing event:", err);
+    res.status(500).send("Internal Server Error");
+  }
 });
 
 export default router;
