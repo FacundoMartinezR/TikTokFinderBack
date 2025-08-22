@@ -18,3 +18,36 @@ model User {
   paypalSubscriptionId  String?
   avatar                String?
 }
+
+model Tiktoker {
+  id             String   @id @map("_id") @default(auto()) @db.ObjectId
+  handle         String   @unique
+  name           String?
+  bio            String?
+  avatarUrl      String?
+  profileUrl     String
+  country        String?       @db.String
+  language       String?       @db.String
+  niches         String[]
+  followers      Int
+  following      Int?
+  totalLikes     Int?
+  avgViews       Float?
+  avgLikes       Float?
+  avgComments    Float?
+  engagementRate Float
+  verified       Boolean  @default(false)
+  contact        String? 
+  priceEst       Float?
+  sampleVideos   Json?
+  source         String?
+  lastScrapedAt  DateTime?
+  raw            Json?
+
+  // ---- Indexes para búsquedas rápidas ----
+  @@index([country])
+  @@index([language])
+  @@index([engagementRate])
+  @@index([followers])
+  @@index([niches])
+}
