@@ -2,7 +2,7 @@ import express from 'express';
 import passport from '../lib/passport';
 import { signToken, verifyToken } from '../lib/jwt';
 import { prisma } from '../lib/prisma';
-import cookie from "cookie";
+const cookie = require('cookie');
 
 const router = express.Router();
 

@@ -7,7 +7,7 @@ const express_1 = __importDefault(require("express"));
 const passport_1 = __importDefault(require("../lib/passport"));
 const jwt_1 = require("../lib/jwt");
 const prisma_1 = require("../lib/prisma");
-const cookie_1 = __importDefault(require("cookie"));
+const cookie = require('cookie');
 const router = express_1.default.Router();
 // Google OAuth
 router.get('/google', passport_1.default.authenticate('google', { scope: ['profile', 'email'] }));
@@ -23,7 +23,7 @@ router.get('/google/callback', passport_1.default.authenticate('google', { sessi
         const token = (0, jwt_1.signToken)({ id: user.id, email: user.email, role: user.role });
         console.log('[auth/google/callback] JWT created', token);
         const isProd = process.env.NODE_ENV === 'production';
-        const serialized = cookie_1.default.serialize('token', token, {
+        const serialized = cookie.serialize('token', token, {
             httpOnly: true,
             secure: isProd,
             sameSite: 'none',
