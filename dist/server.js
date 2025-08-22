@@ -15,13 +15,12 @@ const auth_1 = __importDefault(require("./routes/auth"));
 const tiktokers_1 = __importDefault(require("./routes/tiktokers"));
 const express_session_1 = __importDefault(require("express-session"));
 const prisma_1 = require("./lib/prisma");
-const cookie_1 = __importDefault(require("cookie"));
 const PORT = process.env.PORT ?? 4000;
 const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:3000';
 const MONGO_URL = process.env.DATABASE_URL;
 const app = (0, express_1.default)();
-console.log('>>> APP STARTING - NODE_ENV=', process.env.NODE_ENV, 'PORT=', process.env.PORT);
-console.error('>>> APP STARTING (error stream)'); // mandalo a stderr también
+app.get('/', (req, res) => res.send('ok'));
+app.listen(4000, () => console.log('ok'));
 // 👇 MUY IMPORTANTE para cookies secure detrás de proxy (Render)
 app.set('trust proxy', 1);
 // Middlewares básicos
@@ -38,17 +37,16 @@ app.use((0, cors_1.default)({
     },
     credentials: true,
 }));
-// Opcional: preflight
-app.options('*', (0, cors_1.default)({
-    origin: (origin, cb) => {
-        if (!origin)
-            return cb(null, true);
-        if (allowed.includes(origin))
-            return cb(null, true);
-        return cb(new Error(`Origin not allowed: ${origin}`));
-    },
-    credentials: true,
+/* Opcional: preflight
+app.options('*', cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true);
+    if (allowed.includes(origin)) return cb(null, true);
+    return cb(new Error(`Origin not allowed: ${origin}`));
+  },
+  credentials: true,
 }));
+*/
 app.use((0, express_session_1.default)({
     secret: process.env.SESSION_SECRET || "supersecret",
     resave: false,
@@ -60,16 +58,17 @@ app.use((0, express_session_1.default)({
         path: '/',
     }
 }));
-// log para ver exactamente qué headers envía el servidor
+/* log para ver exactamente qué headers envía el servidor
 app.use((req, res, next) => {
-    // log incoming cookies
-    console.log('[REQUEST] origin=', req.headers.origin, ' cookies=', req.headers.cookie);
-    // log response set-cookie cuando termine la respuesta
-    res.on('finish', () => {
-        console.log('[RESPONSE] set-cookie header=', res.getHeader('set-cookie'));
-    });
-    next();
+  // log incoming cookies
+  console.log('[REQUEST] origin=', req.headers.origin, ' cookies=', req.headers.cookie);
+  // log response set-cookie cuando termine la respuesta
+  res.on('finish', () => {
+    console.log('[RESPONSE] set-cookie header=', res.getHeader('set-cookie'));
+  });
+  next();
 });
+*/
 // Passport init
 app.use(passport_1.default.initialize());
 app.use(passport_1.default.session());
@@ -83,23 +82,26 @@ app.use((req, res, next) => {
 app.use('/auth', auth_1.default);
 app.use('/api/tiktokers', tiktokers_1.default);
 app.get('/', (req, res) => res.json({ ok: true }));
+/*
 app.get('/test-set-cookie', (req, res) => {
-    const token = 'TEST-TOKEN-' + Date.now();
-    const serialized = cookie_1.default.serialize('token', token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none',
-        path: '/',
-        maxAge: 60 * 60,
-        domain: process.env.BACKEND_COOKIE_DOMAIN || 'tiktokfinder.onrender.com'
-    });
-    res.setHeader('Set-Cookie', serialized);
-    res.json({ ok: true, serialized });
+  const token = 'TEST-TOKEN-' + Date.now();
+  const serialized = cookie.serialize('token', token, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    path: '/',
+    maxAge: 60 * 60,
+  });
+  res.setHeader('Set-Cookie', serialized);
+  res.json({ ok: true, serialized });
 });
+*/
+/*
 app.get('/health', (req, res) => {
-    console.log('[HEALTH] ping received');
-    res.json({ ok: true, time: Date.now() });
+  console.log('[HEALTH] ping received');
+  res.json({ ok: true, time: Date.now() });
 });
+*/
 app.post("/user/upgrade", async (req, res) => {
     const { userId } = req.body;
     try {
@@ -145,6 +147,29 @@ if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
         // opciones aquí si las necesitás (opcional)
         });
         console.log('Mongoose conectado ✅');
+        function listEndpoints(app) {
+            const routes = [];
+            app._router.stack.forEach((middleware) => {
+                if (middleware.route) {
+                    // rutas directas
+                    routes.push(middleware.route);
+                }
+                else if (middleware.name === "router") {
+                    // rutas de routers
+                    middleware.handle.stack.forEach((handler) => {
+                        let route = handler.route;
+                        route && routes.push(route);
+                    });
+                }
+            });
+            routes.forEach((route) => {
+                const methods = Object.keys(route.methods)
+                    .map((m) => m.toUpperCase())
+                    .join(", ");
+                console.log(`${methods.padEnd(10)} ${route.path}`);
+            });
+        }
+        listEndpoints(app);
         app.listen(PORT, () => {
             console.log(`Server running on http://localhost:${PORT}`);
         });

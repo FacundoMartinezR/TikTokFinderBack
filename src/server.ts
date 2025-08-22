@@ -18,9 +18,8 @@ const FRONTEND_URL = process.env.FRONTEND_URL ?? 'http://localhost:3000';
 const MONGO_URL = process.env.DATABASE_URL;
 
 const app = express();
-
-console.log('>>> APP STARTING - NODE_ENV=', process.env.NODE_ENV, 'PORT=', process.env.PORT);
-console.error('>>> APP STARTING (error stream)'); // mandalo a stderr también
+app.get('/', (req, res) => res.send('ok'));
+app.listen(4000, () => console.log('ok'));
 
 // 👇 MUY IMPORTANTE para cookies secure detrás de proxy (Render)
 app.set('trust proxy', 1);
@@ -38,7 +37,8 @@ app.use(cors({
   credentials: true,
 }));
 
-// Opcional: preflight
+
+/* Opcional: preflight
 app.options('*', cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
@@ -47,7 +47,7 @@ app.options('*', cors({
   },
   credentials: true,
 }));
-
+*/
 
 app.use(session({
   secret: process.env.SESSION_SECRET || "supersecret",
@@ -61,7 +61,8 @@ app.use(session({
   }
 }));
 
-// log para ver exactamente qué headers envía el servidor
+
+/* log para ver exactamente qué headers envía el servidor
 app.use((req, res, next) => {
   // log incoming cookies
   console.log('[REQUEST] origin=', req.headers.origin, ' cookies=', req.headers.cookie);
@@ -71,6 +72,7 @@ app.use((req, res, next) => {
   });
   next();
 });
+*/
 
 // Passport init
 app.use(passport.initialize());
@@ -89,6 +91,7 @@ app.use('/api/tiktokers', tiktokerRoutes);
 
 app.get('/', (req, res) => res.json({ ok: true }));
 
+/*
 app.get('/test-set-cookie', (req, res) => {
   const token = 'TEST-TOKEN-' + Date.now();
   const serialized = cookie.serialize('token', token, {
@@ -101,14 +104,16 @@ app.get('/test-set-cookie', (req, res) => {
   res.setHeader('Set-Cookie', serialized);
   res.json({ ok: true, serialized });
 });
+*/
 
+/*
 app.get('/health', (req, res) => {
   console.log('[HEALTH] ping received');
   res.json({ ok: true, time: Date.now() });
 });
+*/
 
-
-app.post("/user/upgrade", async (req, res) => {
+ app.post("/user/upgrade", async (req, res) => {
   const { userId } = req.body;
 
   try {
@@ -120,7 +125,7 @@ app.post("/user/upgrade", async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: "Failed to upgrade user" });
   }
-});
+}); 
 
 import paypalRoutes from './routes/paypal';
 app.use('/paypal', paypalRoutes);
@@ -158,6 +163,30 @@ if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
       // opciones aquí si las necesitás (opcional)
     });
     console.log('Mongoose conectado ✅');
+    function listEndpoints(app: any) {
+  const routes: any[] = [];
+  app._router.stack.forEach((middleware: any) => {
+    if (middleware.route) {
+      // rutas directas
+      routes.push(middleware.route);
+    } else if (middleware.name === "router") {
+      // rutas de routers
+      middleware.handle.stack.forEach((handler: any) => {
+        let route = handler.route;
+        route && routes.push(route);
+      });
+    }
+  });
+
+  routes.forEach((route) => {
+    const methods = Object.keys(route.methods)
+      .map((m) => m.toUpperCase())
+      .join(", ");
+    console.log(`${methods.padEnd(10)} ${route.path}`);
+  });
+}
+
+listEndpoints(app);
 
     app.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
