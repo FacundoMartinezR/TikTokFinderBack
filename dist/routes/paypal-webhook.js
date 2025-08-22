@@ -7,7 +7,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const prisma_1 = require("../lib/prisma");
 const router = express_1.default.Router();
-router.post("/paypal-webhook", express_1.default.json(), async (req, res) => {
+router.post("/", express_1.default.json(), async (req, res) => {
     console.log("[PAYPAL WEBHOOK] evento recibido:", JSON.stringify(req.body, null, 2));
     const event = req.body;
     try {
