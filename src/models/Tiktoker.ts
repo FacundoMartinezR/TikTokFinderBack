@@ -15,4 +15,4 @@ const TiktokerSchema = new Schema({
   scrapedAt: Date
 }, { timestamps: true });
 
-export default mongoose.models.Tiktoker || mongoose.model('Tiktoker', TiktokerSchema);
+export default mongoose.models.Tiktoker || mongoose.model('tiktokers', TiktokerSchema);
