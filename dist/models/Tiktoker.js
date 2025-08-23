@@ -48,4 +48,4 @@ const TiktokerSchema = new mongoose_1.Schema({
     tags: [String],
     scrapedAt: Date
 }, { timestamps: true });
-exports.default = mongoose_1.default.models.Tiktoker || mongoose_1.default.model('tiktokers', TiktokerSchema);
+exports.default = mongoose_1.default.models.Tiktoker || mongoose_1.default.model('Tiktoker', TiktokerSchema);
