@@ -1,7 +1,6 @@
 /// <reference types="node" />
 
 import { PrismaClient } from "@prisma/client";
-
 const prisma = new PrismaClient();
 
 const tiktokers = [
@@ -30,42 +29,118 @@ const tiktokers = [
     raw: { platform: "tiktok" },
   },
   {
-    handle: "techguy_uy",
-    name: "Martín López",
-    bio: "Tecnología y reviews 📱💻",
-    avatarUrl: "https://randomuser.me/api/portraits/men/2.jpg",
-    profileUrl: "https://www.tiktok.com/@techguy_uy",
-    country: "Uruguay",
+    handle: "techlover_mx",
+    name: "Carlos Rivera",
+    bio: "Reseñas de gadgets y tips de tecnología 🔌📱",
+    avatarUrl: "https://randomuser.me/api/portraits/men/3.jpg",
+    profileUrl: "https://www.tiktok.com/@techlover_mx",
+    country: "Mexico",
     language: "es",
     niches: ["tech", "reviews"],
-    followers: 80000,
-    following: 150,
-    totalLikes: 450000,
-    avgViews: 20000,
-    avgLikes: 1800,
-    avgComments: 120,
-    engagementRate: 0.09,
+    followers: 95000,
+    following: 180,
+    totalLikes: 600000,
+    avgViews: 30000,
+    avgLikes: 2500,
+    avgComments: 150,
+    engagementRate: 0.1,
     verified: false,
-    contact: "martinlopez@example.com",
-    priceEst: 150,
+    contact: "carlos@example.com",
+    priceEst: 180,
     sampleVideos: { urls: ["https://tiktok.com/video/3"] },
     source: "manual_seed",
     lastScrapedAt: new Date(),
     raw: { platform: "tiktok" },
   },
-  // 👉 Duplica y cambia valores hasta llegar a 20 tiktokers
+  {
+    handle: "cookwithana",
+    name: "Ana Torres",
+    bio: "Recetas fáciles y deliciosas 🍝🍰",
+    avatarUrl: "https://randomuser.me/api/portraits/women/4.jpg",
+    profileUrl: "https://www.tiktok.com/@cookwithana",
+    country: "Argentina",
+    language: "es",
+    niches: ["food", "lifestyle"],
+    followers: 200000,
+    following: 150,
+    totalLikes: 1800000,
+    avgViews: 80000,
+    avgLikes: 6000,
+    avgComments: 400,
+    engagementRate: 0.12,
+    verified: true,
+    contact: "ana@example.com",
+    priceEst: 300,
+    sampleVideos: { urls: ["https://tiktok.com/video/4", "https://tiktok.com/video/5"] },
+    source: "manual_seed",
+    lastScrapedAt: new Date(),
+    raw: { platform: "tiktok" },
+  },
+  {
+    handle: "fitnessleo",
+    name: "Leo Fit",
+    bio: "Entrenador personal 💪 Rutinas y motivación",
+    avatarUrl: "https://randomuser.me/api/portraits/men/5.jpg",
+    profileUrl: "https://www.tiktok.com/@fitnessleo",
+    country: "Spain",
+    language: "es",
+    niches: ["fitness", "health"],
+    followers: 175000,
+    following: 220,
+    totalLikes: 1400000,
+    avgViews: 60000,
+    avgLikes: 5000,
+    avgComments: 350,
+    engagementRate: 0.09,
+    verified: false,
+    contact: "leo@example.com",
+    priceEst: 220,
+    sampleVideos: { urls: ["https://tiktok.com/video/6"] },
+    source: "manual_seed",
+    lastScrapedAt: new Date(),
+    raw: { platform: "tiktok" },
+  },
+  {
+    handle: "travelmia",
+    name: "Mia Johnson",
+    bio: "Explorando el mundo 🌍✈️ Consejos de viajes",
+    avatarUrl: "https://randomuser.me/api/portraits/women/6.jpg",
+    profileUrl: "https://www.tiktok.com/@travelmia",
+    country: "USA",
+    language: "en",
+    niches: ["travel", "lifestyle"],
+    followers: 320000,
+    following: 300,
+    totalLikes: 2500000,
+    avgViews: 120000,
+    avgLikes: 9500,
+    avgComments: 600,
+    engagementRate: 0.11,
+    verified: true,
+    contact: "mia@example.com",
+    priceEst: 500,
+    sampleVideos: { urls: ["https://tiktok.com/video/7"] },
+    source: "manual_seed",
+    lastScrapedAt: new Date(),
+    raw: { platform: "tiktok" },
+  },
+  // 👉 agrega más hasta 10 o 20 con distintos nichos (comedia, música, deportes, moda, gaming, etc.)
 ];
 
 async function main() {
   console.log("🌱 Seeding database...");
 
-  // 🔹 Borro datos anteriores
+  // Limpio la colección
   await prisma.tiktoker.deleteMany();
 
-  // 🔹 Inserto nuevos tiktokers
-  await prisma.tiktoker.createMany({
-    data: tiktokers,
-  });
+  // Inserto uno por uno (para respetar unique handle)
+  for (const tiktoker of tiktokers) {
+    await prisma.tiktoker.upsert({
+      where: { handle: tiktoker.handle },
+      update: {},
+      create: tiktoker,
+    });
+  }
 
   console.log("✅ Seed completado con éxito");
 }
