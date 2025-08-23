@@ -1,4 +1,4 @@
-import mongoose, { Schema } from 'mongoose';
+import mongoose, { Collection, Schema } from 'mongoose';
 
 const TiktokerSchema = new Schema({
   username: { type: String, required: true, index: true },
@@ -13,6 +13,6 @@ const TiktokerSchema = new Schema({
   avgComments: Number,
   tags: [String],
   scrapedAt: Date
-}, { timestamps: true });
+}, { timestamps: true, collection: 'Tiktoker' });
 
 export default mongoose.models.Tiktoker || mongoose.model('Tiktoker', TiktokerSchema);

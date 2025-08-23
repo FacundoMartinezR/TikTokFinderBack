@@ -47,5 +47,5 @@ const TiktokerSchema = new mongoose_1.Schema({
     avgComments: Number,
     tags: [String],
     scrapedAt: Date
-}, { timestamps: true });
+}, { timestamps: true, collection: 'Tiktoker' });
 exports.default = mongoose_1.default.models.Tiktoker || mongoose_1.default.model('Tiktoker', TiktokerSchema);
