@@ -1,39 +1,53 @@
+// src/routes/auth.ts
 import express from 'express';
 import passport from '../lib/passport';
 import { signToken, verifyToken } from '../lib/jwt';
 import { prisma } from '../lib/prisma';
+import crypto from 'crypto';
 
 const router = express.Router();
 
 // helpers de cookie
-const isProd = process.env.NODE_ENV === 'production';
 const baseCookieOptions: any = {
   httpOnly: true,
-  secure: true,                      // secure solo en producción
-  sameSite: true,   // 'none' en prod para cross-site; 'lax' en dev
+  secure: true,
+  sameSite: true,
   path: '/',
-  maxAge: 1 * 24 * 3600 * 1000,        // 1 día en ms (res.cookie usa ms)
+  maxAge: 7 * 24 * 3600 * 1000,
 };
 if (process.env.COOKIE_DOMAIN) {
-  // p.ej. ".midominio.com" si querés compartir cookie entre subdominios
   baseCookieOptions.domain = process.env.COOKIE_DOMAIN;
 }
 
 /**
- * Flow:
- * 1) /auth/google -> Google OAuth
- * 2) Google redirects to /auth/google/callback on the backend
- * 3) backend creates finalToken (long-lived JWT) and a short-lived exchangeToken
- *    that *contains* the finalToken (exchangeToken expires quickly).
- * 4) backend redirects browser to FRONTEND_URL/auth/exchange?code=<exchangeToken>
- * 5) frontend page POSTs the code to /auth/exchange (from the frontend origin).
- * 6) backend verifies exchangeToken and then sets the httpOnly cookie properly.
+ * Exchange store (in-memory)
+ * key -> { finalToken, expiresAt }
+ *
+ * WARNING: esto es temporal y funciona solo en servidores con memoria persistente.
+ * Para producción con varias instancias usar Redis o guardar en DB.
  */
+type ExchangeEntry = { finalToken: string; expiresAt: number };
+const exchangeStore = new Map<string, ExchangeEntry>();
 
-// Google OAuth (start)
+// Limpieza periódica de entries expiradas (cada 30s)
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, val] of exchangeStore.entries()) {
+    if (val.expiresAt <= now) exchangeStore.delete(key);
+  }
+}, 30_000);
+
+/**
+ * Google OAuth start
+ */
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
 
-// Google OAuth callback - create exchangeToken and redirect to frontend
+/**
+ * Google callback
+ * - crea finalToken (JWT con signToken)
+ * - genera un code aleatorio corto (hex) y lo guarda en exchangeStore -> finalToken
+ * - redirige al frontend /auth/exchange?code=<code>
+ */
 router.get(
   '/google/callback',
   passport.authenticate('google', { session: false }),
@@ -42,62 +56,54 @@ router.get(
       // @ts-ignore
       const user = req.user;
       if (!user) {
-        console.log('[auth/google/callback] No user found');
+        console.warn('[auth/google/callback] no user returned by passport');
         return res.redirect(`${process.env.FRONTEND_URL}/auth/fail`);
       }
 
-      console.log('[auth/google/callback] User found', { id: user.id, email: user.email });
+      console.log('[auth/google/callback] user found', { id: user.id, email: user.email });
 
-      // 1) final token (the one we want as cookie)
+      // 1) Generar finalToken con tu helper (el que usarás como cookie)
       const finalToken = signToken({ id: user.id, email: user.email, role: user.role });
 
-      // 2) exchange token (short-lived). We embed the finalToken inside.
-      //    We add an explicit exp claim to keep it very short-lived (2 minutes).
-      //    If your signToken implementation overrides exp, adapt accordingly.
-      const nowSec = Math.floor(Date.now() / 1000);
-      const exchangePayload: any = {
-        uid: user.id,
-        exchangeFor: finalToken,
-        // expiration in ~2 minutes
-        exp: nowSec + 120,
-      };
-      const exchangeToken = signToken(exchangePayload);
+      // 2) Generar code aleatorio y guardarlo en store con TTL (2 minutos)
+      const code = crypto.randomBytes(24).toString('hex'); // ~48 chars
+      const expiresAt = Date.now() + 2 * 60 * 1000; // 2 minutos
+      exchangeStore.set(code, { finalToken, expiresAt });
 
-      // Redirect browser to frontend exchange page with the short code
-      // frontend will POST this code to /auth/exchange to receive the cookie
-      const redirectTo = `${process.env.FRONTEND_URL}/auth/exchange?code=${encodeURIComponent(exchangeToken)}`;
-      console.log('[auth/google/callback] Redirecting to exchange page', redirectTo);
+      // 3) Redirigir al frontend con el code en query
+      const redirectTo = `${process.env.FRONTEND_URL}/auth/exchange?code=${encodeURIComponent(code)}`;
+      console.log('[auth/google/callback] redirecting to', redirectTo);
       return res.redirect(redirectTo);
     } catch (err) {
       console.error('[auth/google/callback] ERROR', err);
-      return res.status(500).json({ ok: false, error: 'Internal Server Error' });
+      return res.status(500).send('Internal Server Error');
     }
   }
 );
 
-// Exchange endpoint: frontend posts short code -> backend verifies and sets cookie
+/**
+ * Exchange endpoint
+ * - frontend POST { code }
+ * - backend valida el code en exchangeStore y sets cookie con finalToken
+ */
 router.post('/exchange', express.json(), async (req, res) => {
   try {
     const { code } = req.body;
     if (!code) return res.status(400).json({ ok: false, error: 'Missing code' });
 
-    let payload: any;
-    try {
-      payload = verifyToken(code);
-    } catch (verifyErr) {
-      console.warn('[auth/exchange] verifyToken failed', verifyErr);
-      return res.status(401).json({ ok: false, error: 'Invalid or expired code' });
+    const entry = exchangeStore.get(code);
+    if (!entry) return res.status(401).json({ ok: false, error: 'Invalid or expired code' });
+
+    if (entry.expiresAt <= Date.now()) {
+      exchangeStore.delete(code);
+      return res.status(401).json({ ok: false, error: 'Code expired' });
     }
 
-    const finalToken = payload?.exchangeFor;
-    if (!finalToken) {
-      console.warn('[auth/exchange] exchangeFor missing in payload', payload);
-      return res.status(400).json({ ok: false, error: 'Invalid code payload' });
-    }
+    // Borrar el code (one-time)
+    exchangeStore.delete(code);
 
-    // set cookie now: this request is initiated from the frontend origin,
-    // so cookie will be accepted by the browser (not a third-party response).
-    res.cookie('token', finalToken, baseCookieOptions);
+    // Setear cookie con finalToken (petición vino desde el frontend)
+    res.cookie('token', entry.finalToken, baseCookieOptions);
     return res.json({ ok: true });
   } catch (err) {
     console.error('[auth/exchange] ERROR', err);
@@ -120,6 +126,7 @@ router.get('/me', async (req, res) => {
 
     res.json({ ok: true, user });
   } catch (e) {
+    console.error('[/auth/me] verifyToken error', e);
     res.status(401).json({ ok: false, error: 'Invalid token' });
   }
 });
@@ -127,14 +134,11 @@ router.get('/me', async (req, res) => {
 // Logout endpoint
 router.post('/logout', (req, res) => {
   try {
-    // clearCookie usa las mismas opciones para asegurarse de sobreescribir la cookie
     res.clearCookie('token', {
       ...baseCookieOptions,
-      // para clearCookie asegúrate de poner maxAge/expiry acorde:
       expires: new Date(0),
       maxAge: 0,
     });
-
     return res.status(200).json({ message: 'Logged out successfully' });
   } catch (err) {
     console.error('Logout error:', err);
