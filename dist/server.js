@@ -13,7 +13,6 @@ const mongoose_1 = __importDefault(require("mongoose"));
 const passport_1 = __importDefault(require("./lib/passport"));
 const auth_1 = __importDefault(require("./routes/auth"));
 const tiktokers_1 = __importDefault(require("./routes/tiktokers"));
-const express_session_1 = __importDefault(require("express-session"));
 const prisma_1 = require("./lib/prisma");
 const paypal_webhook_1 = __importDefault(require("./routes/paypal-webhook"));
 const PORT = process.env.PORT ?? 4000;
@@ -48,17 +47,17 @@ app.options('*', cors({
   credentials: true,
 }));
 */
-app.use((0, express_session_1.default)({
-    secret: process.env.SESSION_SECRET || "supersecret",
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none',
-        path: '/',
-    }
-}));
+/*app.use(session({
+  secret: process.env.SESSION_SECRET || "supersecret",
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    path: '/',
+  }
+}));*/
 /* log para ver exactamente qué headers envía el servidor
 app.use((req, res, next) => {
   // log incoming cookies
@@ -72,7 +71,7 @@ app.use((req, res, next) => {
 */
 // Passport init
 app.use(passport_1.default.initialize());
-app.use(passport_1.default.session());
+//app.use(passport.session());
 app.use((req, res, next) => {
     res.on("finish", () => {
         console.log("Cookies enviadas:", res.getHeader("set-cookie"));

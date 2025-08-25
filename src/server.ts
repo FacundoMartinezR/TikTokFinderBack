@@ -50,7 +50,7 @@ app.options('*', cors({
 }));
 */
 
-app.use(session({
+/*app.use(session({
   secret: process.env.SESSION_SECRET || "supersecret",
   resave: false,
   saveUninitialized: false,
@@ -60,7 +60,7 @@ app.use(session({
     sameSite: 'none',
     path: '/',
   }
-}));
+}));*/
 
 
 /* log para ver exactamente qué headers envía el servidor
@@ -77,7 +77,7 @@ app.use((req, res, next) => {
 
 // Passport init
 app.use(passport.initialize());
-app.use(passport.session());
+//app.use(passport.session());
 
 app.use((req, res, next) => {
   res.on("finish", () => {
