@@ -61,14 +61,12 @@ router.get('/me', async (req, res) => {
 router.post("/logout", (req, res) => {
     try {
         const isProd = process.env.NODE_ENV === "production";
-        const serialized = cookie.serialize("token", "", {
+        res.clearCookie("token", {
             httpOnly: true,
-            secure: isProd,
-            sameSite: "none",
-            path: "/", // igual que en login
-            expires: new Date(0) // 👈 fecha expirada
+            secure: true,
+            sameSite: "none", // debe coincidir con el login
+            path: "/", // debe coincidir con el login
         });
-        res.setHeader("Set-Cookie", serialized);
         return res.status(200).json({ message: "Logged out successfully" });
     }
     catch (err) {
