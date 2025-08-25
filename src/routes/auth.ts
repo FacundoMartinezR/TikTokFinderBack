@@ -2,9 +2,22 @@ import express from 'express';
 import passport from '../lib/passport';
 import { signToken, verifyToken } from '../lib/jwt';
 import { prisma } from '../lib/prisma';
-const cookie = require('cookie');
 
 const router = express.Router();
+
+// helpers de cookie
+const isProd = process.env.NODE_ENV === 'production';
+const baseCookieOptions: any = {
+  httpOnly: true,
+  secure: isProd,                      // secure solo en producción
+  sameSite: isProd ? 'none' : 'lax',   // 'none' en prod para cross-site; 'lax' en dev
+  path: '/',
+  maxAge: 7 * 24 * 3600 * 1000,        // 7 días en ms (res.cookie usa ms)
+};
+if (process.env.COOKIE_DOMAIN) {
+  // p.ej. ".midominio.com" si querés compartir cookie entre subdominios
+  baseCookieOptions.domain = process.env.COOKIE_DOMAIN;
+}
 
 // Google OAuth
 router.get('/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
@@ -26,16 +39,12 @@ router.get(
       const token = signToken({ id: user.id, email: user.email, role: user.role });
       console.log('[auth/google/callback] JWT created', token);
 
-      const serialized = cookie.serialize('token', token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'none',
-        path: '/',
-        maxAge: 7 * 24 * 3600,
+      // Usa res.cookie en lugar de serializar manualmente
+      res.cookie('token', token, baseCookieOptions);
+      console.log('[auth/google/callback] Set cookie with options:', {
+        ...baseCookieOptions,
+        // no logueamos el token entero por seguridad
       });
-
-      console.log('[auth/google/callback] Serialized Set-Cookie:', serialized);
-      res.setHeader('Set-Cookie', serialized);
 
       return res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
     } catch (err) {
@@ -47,10 +56,9 @@ router.get(
 
 // Endpoint para obtener usuario logueado
 router.get('/me', async (req, res) => {
-
   console.log('[/auth/me] Origin:', req.headers.origin);
   console.log('[/auth/me] Cookies:', req.cookies);
-  
+
   const token = req.cookies?.token;
   if (!token) return res.status(401).json({ ok: false, error: 'Not authenticated' });
 
@@ -66,22 +74,20 @@ router.get('/me', async (req, res) => {
 });
 
 // Logout endpoint
-router.post("/logout", (req, res) => {
+router.post('/logout', (req, res) => {
   try {
-    const serialized = cookie.serialize("token", "", {
-      httpOnly: true,
-      secure: true,
-      sameSite: "none",
-      path: "/",           // igual que en login
-      expires: new Date(0) // 👈 fecha expirada
+    // clearCookie usa las mismas opciones para asegurarse de sobreescribir la cookie
+    res.clearCookie('token', {
+      ...baseCookieOptions,
+      // para clearCookie asegúrate de poner maxAge/expiry acorde:
+      expires: new Date(0),
+      maxAge: 0,
     });
 
-    res.setHeader("Set-Cookie", serialized);
-
-    return res.status(200).json({ message: "Logged out successfully" });
+    return res.status(200).json({ message: 'Logged out successfully' });
   } catch (err) {
-    console.error("Logout error:", err);
-    return res.status(500).json({ message: "Error logging out" });
+    console.error('Logout error:', err);
+    return res.status(500).json({ message: 'Error logging out' });
   }
 });
 
