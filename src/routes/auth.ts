@@ -66,10 +66,20 @@ router.get('/me', async (req, res) => {
   }
 });
 
-// Logout
-router.post('/logout', (req, res) => {
-  res.clearCookie('token');
-  res.json({ ok: true });
-});
+// Logout endpoint
+router.post("/logout", (req, res) => {
+  try {
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", // solo en https en prod
+      sameSite: "strict",
+      path: "/dashboard", // asegúrate que sea el mismo path que usaste al setear la cookie
+    })
+    return res.status(200).json({ message: "Logged out successfully" })
+  } catch (err) {
+    console.error("Logout error:", err)
+    return res.status(500).json({ message: "Error logging out" })
+  }
+})
 
 export default router;
