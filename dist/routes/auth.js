@@ -14,7 +14,7 @@ const router = express_1.default.Router();
 const baseCookieOptions = {
     httpOnly: true,
     secure: true,
-    sameSite: true,
+    sameSite: "none",
     path: '/',
     maxAge: 7 * 24 * 3600 * 1000,
 };
