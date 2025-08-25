@@ -22,10 +22,9 @@ router.get('/google/callback', passport_1.default.authenticate('google', { sessi
         console.log('[auth/google/callback] User found', user);
         const token = (0, jwt_1.signToken)({ id: user.id, email: user.email, role: user.role });
         console.log('[auth/google/callback] JWT created', token);
-        const isProd = process.env.NODE_ENV === 'production';
         const serialized = cookie.serialize('token', token, {
             httpOnly: true,
-            secure: isProd,
+            secure: true,
             sameSite: 'none',
             path: '/',
             maxAge: 7 * 24 * 3600,

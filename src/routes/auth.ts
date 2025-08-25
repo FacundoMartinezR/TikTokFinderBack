@@ -26,10 +26,9 @@ router.get(
       const token = signToken({ id: user.id, email: user.email, role: user.role });
       console.log('[auth/google/callback] JWT created', token);
 
-      const isProd = process.env.NODE_ENV === 'production';
       const serialized = cookie.serialize('token', token, {
         httpOnly: true,
-        secure: isProd,
+        secure: true,
         sameSite: 'none',
         path: '/',
         maxAge: 7 * 24 * 3600,
