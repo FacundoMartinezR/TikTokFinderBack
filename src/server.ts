@@ -26,12 +26,25 @@ app.set('trust proxy', 1);
 // Middlewares básicos
 app.use(express.json());
 app.use(cookieParser());
-const allowed = [FRONTEND_URL, 'http://localhost:5173', 'https://tik-tok-finder.vercel.app'];
+const allowed = [
+  (process.env.FRONTEND_URL || 'http://localhost:3000'),
+  'http://localhost:5173',
+  'https://tik-tok-finder.vercel.app'
+];
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true); // Postman, curl, webhooks
-    if (allowed.includes(origin)) return cb(null, true);
-    return cb(null, false); // rechaza otros
+    if (!origin) return cb(null, true); // tools like curl/postman
+    // permitir coincidencias por inicio (por si FRONTEND_URL tiene o no slash)
+    const ok = allowed.some(a => {
+      try {
+        return origin === a || origin.startsWith(a);
+      } catch {
+        return false;
+      }
+    });
+    if (ok) return cb(null, true);
+    console.warn('CORS blocked origin:', origin);
+    return cb(new Error(`Origin not allowed: ${origin}`));
   },
   credentials: true,
 }));

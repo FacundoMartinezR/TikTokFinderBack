@@ -48,32 +48,28 @@ router.get('/google', passport.authenticate('google', { scope: ['profile', 'emai
  * - genera un code aleatorio corto (hex) y lo guarda en exchangeStore -> finalToken
  * - redirige al frontend /auth/exchange?code=<code>
  */
-router.get(
-  '/google/callback',
+router.get('/google/callback',
   passport.authenticate('google', { session: false }),
   async (req, res) => {
     try {
       // @ts-ignore
       const user = req.user;
       if (!user) {
-        console.warn('[auth/google/callback] no user returned by passport');
+        console.warn('[auth/google/callback] No user from passport');
         return res.redirect(`${process.env.FRONTEND_URL}/auth/fail`);
       }
 
       console.log('[auth/google/callback] user found', { id: user.id, email: user.email });
 
-      // 1) Generar finalToken con tu helper (el que usarás como cookie)
+      // CREA solo el finalToken (NO lo pieses como cookie aquí)
       const finalToken = signToken({ id: user.id, email: user.email, role: user.role });
 
-      // 2) Generar code aleatorio y guardarlo en store con TTL (2 minutos)
-      const code = crypto.randomBytes(24).toString('hex'); // ~48 chars
-      const expiresAt = Date.now() + 2 * 60 * 1000; // 2 minutos
-      exchangeStore.set(code, { finalToken, expiresAt });
+      // GUARDA finalToken en exchangeStore (o genera exchange JWT)
+      const code = crypto.randomBytes(24).toString('hex');
+      exchangeStore.set(code, { finalToken, expiresAt: Date.now() + 2 * 60 * 1000 });
 
-      // 3) Redirigir al frontend con el code en query
-      const redirectTo = `${process.env.FRONTEND_URL}/auth/exchange?code=${encodeURIComponent(code)}`;
-      console.log('[auth/google/callback] redirecting to', redirectTo);
-      return res.redirect(redirectTo);
+      console.log('[auth/google/callback] created exchange code (not cookie) ->', code);
+      return res.redirect(`${process.env.FRONTEND_URL}/auth/exchange?code=${code}`);
     } catch (err) {
       console.error('[auth/google/callback] ERROR', err);
       return res.status(500).send('Internal Server Error');
@@ -81,35 +77,29 @@ router.get(
   }
 );
 
-/**
- * Exchange endpoint
- * - frontend POST { code }
- * - backend valida el code en exchangeStore y sets cookie con finalToken
- */
 router.post('/exchange', express.json(), async (req, res) => {
   try {
     const { code } = req.body;
-    if (!code) return res.status(400).json({ ok: false, error: 'Missing code' });
-
+    console.log('[auth/exchange] received code:', code);
     const entry = exchangeStore.get(code);
-    if (!entry) return res.status(401).json({ ok: false, error: 'Invalid or expired code' });
-
-    if (entry.expiresAt <= Date.now()) {
-      exchangeStore.delete(code);
-      return res.status(401).json({ ok: false, error: 'Code expired' });
+    if (!entry) {
+      console.warn('[auth/exchange] invalid/expired code');
+      return res.status(401).json({ ok: false, error: 'Invalid or expired code' });
     }
 
-    // Borrar el code (one-time)
+    // One-time: borrar el code
     exchangeStore.delete(code);
 
-    // Setear cookie con finalToken (petición vino desde el frontend)
+    // Aquí SETEAMOS la cookie (petición iniciada por el frontend)
     res.cookie('token', entry.finalToken, baseCookieOptions);
+    console.log('[auth/exchange] set cookie for domain:', req.hostname || req.headers.host, 'cookieOptions:', baseCookieOptions);
     return res.json({ ok: true });
   } catch (err) {
     console.error('[auth/exchange] ERROR', err);
     return res.status(500).json({ ok: false, error: 'Internal Server Error' });
   }
 });
+
 
 // Endpoint para obtener usuario logueado
 router.get('/me', async (req, res) => {
