@@ -31,23 +31,44 @@ const allowed = [
   'http://localhost:5173',
   'https://tik-tok-finder.vercel.app'
 ];
-app.use(cors({
-  origin: (origin, cb) => {
-    if (!origin) return cb(null, true); // tools like curl/postman
-    // permitir coincidencias por inicio (por si FRONTEND_URL tiene o no slash)
-    const ok = allowed.some(a => {
-      try {
-        return origin === a || origin.startsWith(a);
-      } catch {
-        return false;
-      }
-    });
-    if (ok) return cb(null, true);
+app.use((req, res, next) => {
+  const origin = req.headers.origin as string | undefined;
+  // permite llamadas sin origin (curl/postman/webhooks)
+  if (!origin) {
+    next();
+    return;
+  }
+
+  const ok = allowed.some(a => origin === a || origin.startsWith(a));
+  if (!ok) {
     console.warn('CORS blocked origin:', origin);
-    return cb(new Error(`Origin not allowed: ${origin}`));
-  },
-  credentials: true,
-}));
+    // si querés devolver 403 en preflight, podés hacerlo; por ahora solo bloqueamos los headers
+    return res.status(403).send('Origin not allowed');
+  }
+
+  // Setear headers CORS de forma explícita
+  res.setHeader('Access-Control-Allow-Origin', origin);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  // permitir los headers que usás (content-type para POST JSON)
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  // exponer headers si necesitás (no es necesario para set-cookie)
+  res.setHeader('Vary', 'Origin');
+
+  // si es preflight, responder OK
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+
+  next();
+});
+
+app.use((req, res, next) => {
+  console.log('[REQ]', req.method, req.path, 'Origin=', req.headers.origin, 'Incoming cookies=', req.headers.cookie);
+  res.on('finish', () => {
+    console.log('[RES]', req.method, req.path, 'set-cookie=', res.getHeader('set-cookie'), 'ACAO=', res.getHeader('Access-Control-Allow-Origin'), 'ACAC=', res.getHeader('Access-Control-Allow-Credentials'));
+  });
+  next();
+});
 
 // CORS específico para webhook (permite cualquier origen)
 app.use("/paypal-webhook", cors());
