@@ -16,7 +16,7 @@ const baseCookieOptions = {
     secure: true,
     sameSite: "none",
     path: '/',
-    maxAge: 7 * 24 * 3600 * 1000,
+    maxAge: 1 * 24 * 3600 * 1000,
 };
 if (process.env.COOKIE_DOMAIN) {
     baseCookieOptions.domain = process.env.COOKIE_DOMAIN;
@@ -33,7 +33,12 @@ setInterval(() => {
 /**
  * Google OAuth start
  */
-router.get('/google', passport_1.default.authenticate('google', { scope: ['profile', 'email'] }));
+router.get('/google', passport_1.default.authenticate('google', {
+    scope: ['profile', 'email'],
+    prompt: 'select_account', // fuerza selector de cuenta
+    // accessType: 'offline',        // opcional si necesitás refresh_token
+    // includeGrantedScopes: true,   // opcional
+}));
 /**
  * Google callback
  * - crea finalToken (JWT con signToken)
