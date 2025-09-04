@@ -1,0 +1,9 @@
+2025/09/04-14:51:08.559 754 Reusing MANIFEST C:\Users\Juampa\Desktop\SaaS\backend\tiktokUserData\Default\Local Storage\leveldb/MANIFEST-000001
+2025/09/04-14:51:08.602 754 Recovering log #41
+2025/09/04-14:51:08.624 754 Reusing old log C:\Users\Juampa\Desktop\SaaS\backend\tiktokUserData\Default\Local Storage\leveldb/000041.log 
+2025/09/04-14:52:08.652 3700 Level-0 table #44: started
+2025/09/04-14:52:08.665 3700 Level-0 table #44: 23384 bytes OK
+2025/09/04-14:52:08.669 3700 Delete type=0 #41
+2025/09/04-14:53:13.398 3700 Level-0 table #46: started
+2025/09/04-14:53:13.417 3700 Level-0 table #46: 52556 bytes OK
+2025/09/04-14:53:13.420 3700 Delete type=0 #43

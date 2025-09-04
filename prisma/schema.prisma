@@ -28,7 +28,7 @@ model Tiktoker {
   profileUrl     String
   country        String?       @db.String
   language       String?       @db.String
-  niches         String[]
+  niche          String?     
   followers      Int
   following      Int?
   totalLikes     Int?
@@ -49,5 +49,5 @@ model Tiktoker {
   @@index([language])
   @@index([engagementRate])
   @@index([followers])
-  @@index([niches])
+  @@index([niche])
 }

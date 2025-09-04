@@ -1,0 +1,9 @@
+2025/09/04-14:58:13.122 238c Reusing MANIFEST C:\Users\Juampa\Desktop\SaaS\backend\tiktokUserData\Default\Session Storage/MANIFEST-000001
+2025/09/04-14:58:13.124 238c Recovering log #78
+2025/09/04-14:58:13.127 238c Reusing old log C:\Users\Juampa\Desktop\SaaS\backend\tiktokUserData\Default\Session Storage/000078.log 
+2025/09/04-14:59:58.096 238c Level-0 table #83: started
+2025/09/04-14:59:58.127 238c Level-0 table #83: 17495 bytes OK
+2025/09/04-14:59:58.131 238c Delete type=0 #78
+2025/09/04-15:02:19.561 1dc Level-0 table #85: started
+2025/09/04-15:02:19.575 1dc Level-0 table #85: 20965 bytes OK
+2025/09/04-15:02:19.579 1dc Delete type=0 #82
