@@ -2,9 +2,11 @@
 import dotenv from "dotenv";
 dotenv.config();
 
-import { chromium, BrowserContext } from "playwright";
+import { chromium, BrowserContext, Browser } from "playwright";
 import fs from "fs";
 import path from "path";
+import http from "http";
+import https from "https";
 import { franc } from "franc";
 
 const API_DELAY_MS = Number(process.env.API_DELAY_MS || 900);
@@ -15,6 +17,8 @@ const HEADLESS = process.env.HEADLESS === "true";
 const FOLLOWERS_MIN = 10_000;
 const FOLLOWERS_MAX = 80_000;
 
+const BACKEND_BASE = (process.env.BACKEND_BASE || "https://tiktokfinder.onrender.com").replace(/\/$/, "");
+
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.6 Safari/605.1.15",
@@ -23,7 +27,6 @@ const USER_AGENTS = [
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
-
 function parseCount(txt: string | number | undefined | null): number {
   if (txt === undefined || txt === null) return 0;
   let s = String(txt).replace(/\s+/g, "").replace(/\u00A0/g, "");
@@ -42,44 +45,66 @@ function parseCount(txt: string | number | undefined | null): number {
 }
 
 // ---------- avatar helpers ----------
-// decode &amp; and keep query string (we need the token)
-// return null if not a valid HTTP url
 function cleanAvatarUrlKeepQuery(raw: string | null | undefined): string | null {
   if (!raw) return null;
   let u = String(raw).replace(/&amp;/g, "&").trim();
-  // Some avatars contain HTML entities; decode common ones
   try { u = decodeURIComponent(u); } catch (e) { /* ignore */ }
-  if (!u.startsWith("http")) {
-    // try adding protocol if missing (unlikely)
-    return null;
-  }
+  if (!u.startsWith("http")) return null;
   return u;
 }
+function sanitizeKeepDot(handle: string) {
+  return String(handle).trim().replace(/[^a-zA-Z0-9._-]/g, "_");
+}
 
-// download avatar using Playwright APIRequestContext (context.request)
-// save in public/avatars/<handle>.<ext> and return path like "/avatars/<handle>.<ext>"
-// if download fails, return null
+/**
+ * Download avatar and save as exactly <handle>.jpeg
+ * return '/avatars/<handle>.jpeg' or null on failure
+ */
 async function downloadAndCacheAvatar(context: BrowserContext, avatarUrl: string, handle: string): Promise<string | null> {
   try {
     const avatarsDir = path.join(process.cwd(), "public", "avatars");
     if (!fs.existsSync(avatarsDir)) fs.mkdirSync(avatarsDir, { recursive: true });
 
-    // Try to get extension from url (jpeg, jpg, png, avif)
-    const m = avatarUrl.match(/\.([a-zA-Z0-9]{2,5})(?:[?#]|$)/);
-    const ext = (m && m[1]) ? m[1].toLowerCase() : "jpg";
-    const filename = `${handle.replace(/[^a-z0-9_\-]/gi, "_")}.${ext}`;
+    const filename = `${sanitizeKeepDot(handle)}.jpeg`;
     const filepath = path.join(avatarsDir, filename);
 
-    // Use context.request (shares cookies/headers)
-    // @ts-ignore - Playwright types may differ, but context.request should exist
-    const resp = await (context as any).request.get(avatarUrl, { timeout: 30000 });
-    if (!resp || !resp.ok()) {
-      console.warn(`[avatar] download failed for ${avatarUrl} status=${resp ? resp.status() : "no_resp"}`);
-      return null;
+    if (fs.existsSync(filepath)) return `/avatars/${filename}`;
+
+    let buffer: Buffer | null = null;
+    try {
+      // @ts-ignore - Playwright request context
+      if ((context as any).request && typeof (context as any).request.get === "function") {
+        const resp = await (context as any).request.get(avatarUrl, { timeout: 30000 });
+        if (resp && resp.ok && resp.ok()) {
+          buffer = await resp.body();
+        }
+      }
+    } catch (e) {
+      buffer = null;
     }
-    const buffer = await resp.body();
+
+    if (!buffer) {
+      // fallback to node http/https
+      buffer = await new Promise<Buffer>((resolve, reject) => {
+        const client = avatarUrl.startsWith("https") ? https : http;
+        const req = client.get(avatarUrl.replace(/&amp;/g, "&"), (res) => {
+          if (res.statusCode && (res.statusCode < 200 || res.statusCode >= 300)) {
+            res.resume();
+            return reject(new Error(`avatar download failed status ${res.statusCode}`));
+          }
+          const chunks: Buffer[] = [];
+          res.on("data", (c) => chunks.push(Buffer.from(c)));
+          res.on("end", () => resolve(Buffer.concat(chunks)));
+        });
+        req.on("error", (err) => reject(err));
+        req.setTimeout(20000, () => {
+          req.abort();
+          reject(new Error("avatar download timeout"));
+        });
+      });
+    }
+
     fs.writeFileSync(filepath, buffer);
-    // return the relative path the dashboard can serve: /avatars/<filename>
     return `/avatars/${filename}`;
   } catch (err) {
     console.warn("[avatar] error downloading avatar:", err);
@@ -87,7 +112,7 @@ async function downloadAndCacheAvatar(context: BrowserContext, avatarUrl: string
   }
 }
 
-// ---------- seed writer ----------
+// ---------- seed writer (unchanged) ----------
 const SEED_PATH = path.join(process.cwd(), "prisma", "seed.ts");
 if (!fs.existsSync(SEED_PATH)) {
   fs.writeFileSync(SEED_PATH, `// Auto-generated by scraper\nexport const influencers = [\n`, "utf8");
@@ -115,10 +140,9 @@ function extractSigiState(html: string): any | null {
   return null;
 }
 
-// ---------- video stat extractor (fallback) ----------
+// ---------- video stats & pinned detection ----------
 function extractVideoStatsFromHtml(html: string) {
   let play = 0, like = 0, comment = 0, share = 0, followers = 0;
-
   const statsRegex = /"stats"\s*:\s*({[\s\S]*?})/;
   const sMatch = html.match(statsRegex);
   if (sMatch) {
@@ -130,7 +154,6 @@ function extractVideoStatsFromHtml(html: string) {
       share = parseCount(statsObj.shareCount ?? statsObj.share_count ?? 0);
     } catch {}
   }
-
   const authRegex = /"authorStats"\s*:\s*({[\s\S]*?})/;
   const aMatch = html.match(authRegex);
   if (aMatch) {
@@ -139,7 +162,6 @@ function extractVideoStatsFromHtml(html: string) {
       followers = parseCount(aobj.followerCount ?? aobj.follower_count ?? aobj.followers ?? 0);
     } catch {}
   }
-
   if (!play) {
     const p = html.match(/"playCount"\s*:\s*([0-9,.KMkm]+)/);
     if (p) play = parseCount(p[1]);
@@ -156,8 +178,6 @@ function extractVideoStatsFromHtml(html: string) {
     const s = html.match(/"shareCount"\s*:\s*([0-9,.KMkm]+)/);
     if (s) share = parseCount(s[1]);
   }
-
-  // textual fallback
   if (!play) {
     const tv = html.replace(/\s+/g, " ").match(/([0-9,.KMkm]+)\s*views/i);
     if (tv) play = parseCount(tv[1]);
@@ -166,15 +186,10 @@ function extractVideoStatsFromHtml(html: string) {
     const tl = html.replace(/\s+/g, " ").match(/([0-9,.KMkm]+)\s*likes/i);
     if (tl) like = parseCount(tl[1]);
   }
-
   return { play, like, comment, share, followers };
 }
-
-// ---------- pinned detection ----------
 function getPinnedIdsFromProfileHtml(html: string): Set<string> {
   const pinned = new Set<string>();
-
-  // 1) badge div detection
   const badgeRe = /<div[^>]*data-e2e=["']video-card-badge["'][^>]*>([\s\S]*?)<\/div>/gi;
   let bm;
   while ((bm = badgeRe.exec(html)) !== null) {
@@ -182,7 +197,6 @@ function getPinnedIdsFromProfileHtml(html: string): Set<string> {
     const start = Math.max(0, idx - 1500);
     const end = Math.min(html.length, idx + 1500);
     const window = html.slice(start, end);
-
     const anchorMatch = window.match(/\/@[\w.-]+\/video\/(\d+)/i);
     if (anchorMatch) pinned.add(anchorMatch[1]);
     else {
@@ -190,15 +204,11 @@ function getPinnedIdsFromProfileHtml(html: string): Set<string> {
       if (idMatch) pinned.add(idMatch[1]);
     }
   }
-
-  // 2) anchors with pinned badge nearby
   const anchorWithPinnedRe = /\/@[\w.-]+\/video\/(\d+)[\s\S]{0,200}?<div[^>]*data-e2e=["']video-card-badge["'][^>]*>[\s\S]*?Pinned/i;
   let am;
   while ((am = anchorWithPinnedRe.exec(html)) !== null) {
     pinned.add(am[1]);
   }
-
-  // 3) enable_profile_pinned_video heuristic
   const enableRe = /"enable_profile_pinned_video"\s*:\s*\{([\s\S]*?)\}/i;
   const eMatch = html.match(enableRe);
   if (eMatch) {
@@ -210,34 +220,29 @@ function getPinnedIdsFromProfileHtml(html: string): Set<string> {
     const afterIds = after.match(/\d{6,}/g);
     if (afterIds) afterIds.forEach((id) => pinned.add(id));
   }
-
   return pinned;
 }
 
-// ---------- browser helpers ----------
-async function openPersistentContext(): Promise<BrowserContext> {
-  const userDataDir = path.join(process.cwd(), "tiktokUserData");
-  if (!fs.existsSync(userDataDir)) fs.mkdirSync(userDataDir, { recursive: true });
-
-  const context = await chromium.launchPersistentContext(userDataDir, {
-    headless: HEADLESS,
+// ---------- browser helpers (non-persistent) ----------
+async function openContext(): Promise<{ browser: Browser; context: BrowserContext }> {
+  const browser = await chromium.launch({ headless: HEADLESS });
+  const context = await browser.newContext({
     userAgent: USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)],
   });
-
   await context.route("**/*", (route) => {
     const url = route.request().url();
-    const block = [".css", "google-analytics", "analytics", "font", "doubleclick"]; // keep images allowed
+    const block = [".css", "google-analytics", "analytics", "font", "doubleclick"];
     if (block.some((b) => url.includes(b))) route.abort();
     else route.continue();
   });
-
-  return context;
+  return { browser, context };
 }
 
-async function getHandlesFromHashtag(page: any, hashtag: string, maxVideos = 60) {
+// ---------- improved handle extraction from hashtag (scroll + DOM) ----------
+async function getHandlesFromHashtag(page: any, hashtag: string, maxHandles = 80) {
   const url = `https://www.tiktok.com/tag/${encodeURIComponent(hashtag)}`;
-  await page.goto(url, { timeout: 50000 });
-  await page.waitForTimeout(5000);
+  await page.goto(url, { timeout: 60000 });
+  await page.waitForTimeout(3000);
 
   const captcha = await page.$("iframe[src*='captcha'], .captcha-container");
   if (captcha) {
@@ -246,18 +251,43 @@ async function getHandlesFromHashtag(page: any, hashtag: string, maxVideos = 60)
     console.log("✅ Captcha resuelto, continuando...");
   }
 
-  const html = await page.content();
-  try { fs.writeFileSync(path.join(process.cwd(), "debug.html"), html, "utf-8"); } catch {}
-
-  const regex = /\/@([\w.-]+)/g;
   const handlesSet = new Set<string>();
-  let match;
-  while ((match = regex.exec(html)) !== null) {
-    handlesSet.add(match[1]);
-    if (handlesSet.size >= maxVideos) break;
+
+  // helper to extract from DOM (faster and more reliable than regex on HTML)
+  const extractFromDom = async () => {
+    try {
+      const hrefs: string[] = await page.evaluate(() => {
+        const anchors = Array.from(document.querySelectorAll('a[href]'));
+        return anchors.map(a => (a as HTMLAnchorElement).href);
+      });
+      for (const href of hrefs) {
+        const m = href.match(/\/@([\w.-]+)/);
+        if (m) handlesSet.add(m[1]);
+        if (handlesSet.size >= maxHandles) break;
+      }
+    } catch (e) {
+      // ignore
+    }
+  };
+
+  // initial extraction
+  await extractFromDom();
+
+  // scroll & extract until we reach maxHandles or maxScrolls
+  const MAX_SCROLLS = 10;
+  let scrolls = 0;
+  while (handlesSet.size < maxHandles && scrolls < MAX_SCROLLS) {
+    scrolls++;
+    try {
+      await page.evaluate(() => {
+        window.scrollBy(0, window.innerHeight * 1.5);
+      });
+    } catch (e) { /* ignore */ }
+    await page.waitForTimeout(1200 + Math.floor(Math.random() * 1200));
+    await extractFromDom();
   }
 
-  console.log(`Found ${handlesSet.size} handles for hashtag ${hashtag}`);
+  console.log(`Found ${handlesSet.size} handles for hashtag ${hashtag} (scrolled ${scrolls} times)`);
   return Array.from(handlesSet);
 }
 
@@ -270,37 +300,76 @@ async function scrapeProfile(context: BrowserContext, handle: string, niche?: st
     await page.waitForTimeout(3000);
 
     let html = await page.content();
-    try { fs.writeFileSync(path.join(process.cwd(), `debug_profile_${handle}.html`), html, "utf8"); } catch {}
-
     const sigi = extractSigiState(html);
 
-    // user fields
+    // ---- user fields ----
     let followers = 0;
     let avatarUrl: string | null = null;
     let bio = "";
 
-    if (sigi) {
-      const userObj =
-        (sigi.UserModule && sigi.UserModule.users && sigi.UserModule.users[handle]) ||
-        (sigi.UserModule && sigi.UserModule[handle]) ||
-        null;
-      if (userObj) {
-        followers = Number(userObj.followerCount ?? userObj.follower_count ?? followers) || followers;
-        const candidate = userObj.avatarLarger || userObj.avatar || userObj.avatar_medium || userObj.avatarThumb || null;
-        if (candidate) avatarUrl = cleanAvatarUrlKeepQuery(candidate);
-        bio = (userObj.signature ?? userObj.description ?? bio) || "";
+    // SIGI_STATE extraction (prefer)
+    if (sigi && sigi.UserModule) {
+      const usersObj = sigi.UserModule.users || sigi.UserModule;
+      if (usersObj && typeof usersObj === "object") {
+        const tryKeys = [handle, handle.toLowerCase(), handle.replace(/^@/, "")];
+        for (const k of tryKeys) {
+          if (usersObj[k]) {
+            const u = usersObj[k];
+            followers = Number(u.followerCount ?? u.follower_count ?? followers) || followers;
+            const cand = u.avatarLarger || u.avatar || u.avatar_medium || u.avatarThumb || null;
+            if (cand) avatarUrl = cleanAvatarUrlKeepQuery(cand);
+            bio = (u.signature ?? u.description ?? bio) || "";
+            break;
+          }
+        }
+        if (!avatarUrl) {
+          for (const key of Object.keys(usersObj)) {
+            const u = usersObj[key];
+            if (!u) continue;
+            const possibleNames = [
+              u.uniqueId, u.uniqueId?.toLowerCase?.(), u.shortId, u.nickName, u.nickname, u.nickname?.toLowerCase?.(),
+            ].filter(Boolean).map(String);
+            if (possibleNames.includes(handle) || possibleNames.includes(handle.replace(/^_/, ""))) {
+              followers = Number(u.followerCount ?? u.follower_count ?? followers) || followers;
+              const cand = u.avatarLarger || u.avatar || u.avatar_medium || u.avatarThumb || null;
+              if (cand) avatarUrl = cleanAvatarUrlKeepQuery(cand);
+              bio = (u.signature ?? u.description ?? bio) || "";
+              break;
+            }
+          }
+        }
       }
     }
 
-    // fallback followers / avatar / bio from HTML
-    if (!followers) {
-      const fMatch = html.match(/"followerCount"\s*:\s*([0-9,.KMkm]+)/);
-      if (fMatch) followers = parseCount(fMatch[1]);
-    }
+    // meta og:image fallback
     if (!avatarUrl) {
       const metaImg = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
       if (metaImg) avatarUrl = cleanAvatarUrlKeepQuery(metaImg[1]);
     }
+
+    // broad tiktokcdn search fallback
+    if (!avatarUrl) {
+      const urlRegex = /https?:\/\/[^\s"'<>]*?(?:tiktokcdn\.com|tiktokv\.com)[^\s"'<>]*?\.(?:jpe?g|png|avif|webp)(?:[^\s"'<>]*)/gi;
+      const found = html.match(urlRegex);
+      if (found && found.length > 0) {
+        const prefer = found.find((u) => /avt|avatar|avatarLarger|avatar_thumb|avatar_medium|cropcenter/i.test(u));
+        avatarUrl = cleanAvatarUrlKeepQuery(prefer || found[0]);
+      }
+    }
+
+    // last resort avatar key
+    if (!avatarUrl) {
+      const anyAvatarRe = /"avatarLarger"\s*:\s*"(https?:[^"]+)"/i;
+      const m = html.match(anyAvatarRe);
+      if (m) avatarUrl = cleanAvatarUrlKeepQuery(m[1]);
+    }
+
+    // fallback followers
+    if (!followers) {
+      const fMatch = html.match(/"followerCount"\s*:\s*([0-9,.KMkm]+)/);
+      if (fMatch) followers = parseCount(fMatch[1]);
+    }
+    // fallback bio
     if (!bio) {
       const bioMatch = html.match(/"signature"\s*:\s*"(.*?)"/);
       if (bioMatch) bio = bioMatch[1].replace(/\\"/g, '"');
@@ -313,36 +382,36 @@ async function scrapeProfile(context: BrowserContext, handle: string, niche?: st
       return null;
     }
 
-    // Attempt to download avatar and cache locally (preferred)
+    // download avatar and return absolute URL when possible
     let finalAvatarUrl: string | null = null;
     if (avatarUrl) {
       const downloaded = await downloadAndCacheAvatar(context, avatarUrl, handle);
       if (downloaded) {
-        finalAvatarUrl = downloaded; // local path served by app: /avatars/<file>
-        console.log(`[${handle}] avatar cached -> ${downloaded}`);
+        finalAvatarUrl = `${BACKEND_BASE}${downloaded}`;
+        console.log(`[${handle}] avatar cached -> ${finalAvatarUrl}`);
       } else {
-        // fallback: keep remote (decoded) url so dashboard can try to load it
         finalAvatarUrl = avatarUrl;
-        console.log(`[${handle}] avatar download failed, keeping remote url`);
+        console.log(`[${handle}] avatar download failed; keeping remote URL -> ${avatarUrl}`);
       }
+    } else {
+      console.log(`[${handle}] avatar NOT found`);
     }
 
-    // pinned detection
+    // pinned detection and video collection
     const pinnedIds = getPinnedIdsFromProfileHtml(html);
     if (pinnedIds.size > 0) console.log(`[${handle}] pinnedIds detected:`, Array.from(pinnedIds));
 
-    // collect non-pinned video ids (anchors + scrolling)
     const collected = new Set<string>();
     const collectFromHtml = (h: string) => {
       const anchorRegex = /\/@[\w.-]+\/video\/(\d+)/g;
       let aMatch;
-      while ((aMatch = anchorRegex.exec(h)) !== null && collected.size < MAX_VIDEOS_PER_PROFILE) {
+      while ((aMatch = anchorRegex.exec(h)) !== null && collected.size < MAX_VIDEOS_PER_PROFILE * 3) {
         const id = aMatch[1];
         if (!pinnedIds.has(id)) collected.add(id);
       }
     };
-
     collectFromHtml(html);
+
     const MAX_SCROLLS = 8;
     let scrolls = 0;
     while (collected.size < MAX_VIDEOS_PER_PROFILE && scrolls < MAX_SCROLLS) {
@@ -350,24 +419,21 @@ async function scrapeProfile(context: BrowserContext, handle: string, niche?: st
       try { await page.evaluate(() => window.scrollBy(0, window.innerHeight * 1.3)); } catch {}
       await page.waitForTimeout(1400 + Math.floor(Math.random() * 1000));
       html = await page.content();
-      try { fs.writeFileSync(path.join(process.cwd(), `debug_profile_${handle}_scroll${scrolls}.html`), html, "utf8"); } catch {}
       const morePinned = getPinnedIdsFromProfileHtml(html);
       morePinned.forEach((id) => pinnedIds.add(id));
       collectFromHtml(html);
     }
 
-    const videoIds = Array.from(collected).slice(0, MAX_VIDEOS_PER_PROFILE);
-    console.log(`[${handle}] videoIds found:`, videoIds);
+    let videoIds = Array.from(collected).filter((id) => !pinnedIds.has(id)).slice(0, MAX_VIDEOS_PER_PROFILE);
+    console.log(`[${handle}] videoIds found (non-pinned):`, videoIds);
 
-    // if no non-pinned videos
     if (videoIds.length === 0) {
       await page.close();
-      console.log(`[${handle}] NO non-pinned videos found`);
       return {
         handle,
         profileUrl: url,
         followers,
-        avatarUrl: finalAvatarUrl,
+        avatarUrl: finalAvatarUrl || null,
         niche: niche || null,
         avgViews: 0,
         engagementRate: 0,
@@ -377,7 +443,7 @@ async function scrapeProfile(context: BrowserContext, handle: string, niche?: st
       };
     }
 
-    // open videos and extract stats
+    // open videos and extract stats; skip pinned pages
     const plays: number[] = [];
     let totalLikes = 0, totalComments = 0, totalShares = 0;
     for (let i = 0; i < Math.min(videoIds.length, MAX_VIDEOS_PER_PROFILE); i++) {
@@ -389,8 +455,13 @@ async function scrapeProfile(context: BrowserContext, handle: string, niche?: st
         await vpage.waitForTimeout(2200 + Math.floor(Math.random() * 800));
 
         const vhtml = await vpage.content();
-        if (i < 2) {
-          try { fs.writeFileSync(path.join(process.cwd(), `debug_video_${handle}_${vidId}.html`), vhtml, "utf8"); } catch {}
+
+        const isPinnedOnPage = /data-e2e=["']video-card-badge["'][^>]*>[\s\S]*?Pinned/i.test(vhtml) ||
+          /"is_pinned"\s*:\s*true/i.test(vhtml);
+        if (isPinnedOnPage) {
+          console.log(`[${handle}] video ${vidId} skipped (page-level pinned).`);
+          await vpage.close();
+          continue;
         }
 
         const vsigi = extractSigiState(vhtml);
@@ -425,7 +496,7 @@ async function scrapeProfile(context: BrowserContext, handle: string, niche?: st
       }
     }
 
-    // metrics: engagementRate (%) = ((likes+comments+shares)/n_videos / followers) * 100
+    // engagement calculation
     let avgViews = 0;
     let engagementRate = 0;
     const nVideos = plays.length;
@@ -464,7 +535,7 @@ async function scrapeProfile(context: BrowserContext, handle: string, niche?: st
 
 // ---------- main pipeline ----------
 async function runForHashtags(hashtags: string[]) {
-  const context = await openPersistentContext();
+  const { browser, context } = await openContext();
   const page = await context.newPage();
 
   console.log("⚠️ Si aparece un CAPTCHA, resuélvelo manualmente en la ventana abierta.");
@@ -474,7 +545,7 @@ async function runForHashtags(hashtags: string[]) {
   const discovered = new Map<string, string>();
   for (const tag of hashtags) {
     console.log("Discovering handles for", tag);
-    const handles = await getHandlesFromHashtag(page, tag, 150);
+    const handles = await getHandlesFromHashtag(page, tag, 400); // más handles por tag
     handles.forEach((h) => discovered.set(h, tag));
     await sleep(API_DELAY_MS);
   }
@@ -489,12 +560,13 @@ async function runForHashtags(hashtags: string[]) {
       const profile = await scrapeProfile(context, handle, niche);
       if (!profile) continue;
       appendToSeed(profile);
-      console.log("✅ Saved:", profile.handle, "followers", profile.followers, "ER", profile.engagementRate + "%");
+      console.log("✅ Saved:", profile.handle, "followers", profile.followers, "ER", profile.engagementRate + "%", "avatar:", profile.avatarUrl);
     }
   }
 
   await page.close();
   await context.close();
+  await browser.close();
   finalizeSeedFile();
 }
 
